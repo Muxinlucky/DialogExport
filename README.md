@@ -1,6 +1,8 @@
 # DialogExport
 
-DialogExport 是一个本地浏览器扩展，用来把网页端 AI 对话导出为本地 Markdown 文件。
+DialogExport 是一个本地超轻量化浏览器扩展，用来把网页端 AI 对话导出为本地 Markdown 文件。
+
+![](./public/volum.png)
 
 ## 最简单的安装方式
 
@@ -34,15 +36,7 @@ Expand-Archive -Path ".\DialogExport-dist.zip" -DestinationPath ".\DialogExport"
 
 ## 支持的平台
 
-- ChatGPT
-- Claude
-- Gemini
-- Grok
-- DeepSeek
-- Kimi
-- 豆包 Doubao
-- Qwen / 通义千问
-- 腾讯元宝 Yuanbao
+- ChatGPT Claude Gemini Grok DeepSeek Kimi 豆包 Doubao Qwen / 通义千问 腾讯元宝 Yuanbao
 
 Google AI Studio 当前不支持。
 
