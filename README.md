@@ -1,17 +1,17 @@
-﻿# DialogExport
+# DialogExport
 
 DialogExport 是一个本地浏览器扩展，用来把网页端 AI 对话导出为本地 Markdown 文件。
 
 ## 最简单的安装方式
 
-普通用户不需要克隆整个项目，也不需要自己运行 `npm install` 或 `npm run build`。
-
-推荐下载已经构建好的压缩包：
+普通用户不需要克隆整个项目，推荐下载已经构建好的压缩包：**直接去realease下载也行**
 
 ```powershell
 Invoke-WebRequest -Uri "https://github.com/Muxinlucky/DialogExport/releases/latest/download/DialogExport-dist.zip" -OutFile "DialogExport-dist.zip"
 Expand-Archive -Path ".\DialogExport-dist.zip" -DestinationPath ".\DialogExport" -Force
 ```
+
+![](./public/use.png)
 
 然后在浏览器里加载：
 
