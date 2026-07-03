@@ -1,0 +1,330 @@
+:root {
+  color-scheme: light;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #f5fbf8;
+  --panel: #ffffff;
+  --text: #172026;
+  --text-soft: #33404d;
+  --muted: #5d6b66;
+  --border: #cfe3dc;
+  --border-strong: #a8cfc2;
+  --primary: #42b883;
+  --primary-hover: #35a875;
+  --primary-soft: #e6f7f0;
+  --primary-border: #9ddac8;
+  --disabled-bg: #eef4f1;
+  --disabled-text: #93a39d;
+  --scrollbar: rgba(66, 184, 131, 0.42);
+  --scrollbar-hover: rgba(53, 168, 117, 0.72);
+  --popup-width: 420px;
+  --popup-padding: 16px;
+  --popup-radius: 30px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+html,
+body {
+  width: var(--popup-width);
+  max-width: var(--popup-width);
+  min-width: 0;
+  margin: 0;
+  background: var(--bg);
+  border-radius: var(--popup-radius);
+  clip-path: inset(0 round var(--popup-radius));
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+}
+
+html {
+  width: var(--popup-width);
+  max-width: var(--popup-width);
+  margin: 0;
+  overflow: visible;
+  background: var(--bg);
+}
+
+body {
+  width: var(--popup-width);
+  max-width: var(--popup-width);
+  max-height: none;
+  min-width: 0;
+  margin: 0;
+  overflow: visible;
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--primary-soft);
+}
+
+button:disabled {
+  color: var(--disabled-text);
+  cursor: not-allowed;
+  background: var(--disabled-bg);
+}
+
+.popup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: var(--popup-width);
+  max-height: none;
+  min-width: 0;
+  overflow: visible;
+  padding: var(--popup-padding);
+  background: var(--bg);
+  border-radius: var(--popup-radius);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.actionArea {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  margin: 14px 0;
+}
+
+.actionRow {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.actionRow > button {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  height: 52px;
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.actionRow > button.primary-action {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.actionRow > button.primary-action:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.selectionPanel {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  min-width: 0;
+  overflow: visible;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.selectionHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.selectionActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.selectionActions button {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversationList {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.conversationItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid #e7f2ee;
+  border-radius: 8px;
+  background: #fbfefd;
+  cursor: pointer;
+}
+
+.conversationItem:hover {
+  border-color: var(--border-strong);
+}
+
+.conversationItem input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+}
+
+.conversationItemBody {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.conversationTitle,
+.conversationUrl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversationTitle {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.conversationUrl {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.emptyList {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.statusPanel {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.statusRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.statusRow span {
+  color: var(--muted);
+}
+
+.statusRow strong {
+  max-width: 190px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.currentTitle {
+  min-height: 36px;
+  padding-top: 8px;
+  border-top: 1px solid #e7f2ee;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}

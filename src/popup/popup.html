@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dialog-Export</title>
+    <link rel="stylesheet" href="./popup.css" />
+    <script type="module" src="./popup.ts"></script>
+  </head>
+  <body>
+    <main class="popup">
+      <header class="header">
+        <div>
+          <h1>Dialog-Export</h1>
+          <p id="pageStatus">正在识别当前页面...</p>
+        </div>
+      </header>
+
+      <section class="actionArea" aria-label="导出操作">
+        <div class="actionRow">
+          <button id="exportCurrentButton" class="primary-action" type="button">导出当前对话</button>
+          <button id="scanHistoryButton" type="button">扫描历史会话</button>
+        </div>
+        <div class="actionRow">
+          <button id="exportSelectedButton" type="button" disabled>导出选中对话</button>
+          <button id="stopButton" class="stop-action" type="button" disabled>停止导出</button>
+        </div>
+      </section>
+
+      <section class="selectionPanel" aria-label="会话选择">
+        <div class="selectionHeader">
+          <strong id="selectionSummary">已选择 0 / 共 0 个</strong>
+        </div>
+        <div class="selectionActions">
+          <button id="selectAllButton" type="button" disabled>全选</button>
+          <button id="clearSelectionButton" type="button" disabled>取消全选</button>
+          <button id="invertSelectionButton" type="button" disabled>反选</button>
+        </div>
+        <div id="conversationList" class="conversationList" aria-label="历史会话列表">
+          <p class="emptyList">扫描后会在这里显示历史会话。</p>
+        </div>
+      </section>
+
+      <section class="statusPanel" aria-label="导出状态">
+        <div class="statusRow">
+          <span>状态</span>
+          <strong id="statusValue">idle</strong>
+        </div>
+        <div class="statusRow">
+          <span>发现会话</span>
+          <strong id="totalValue">0</strong>
+        </div>
+        <div class="statusRow">
+          <span>当前进度</span>
+          <strong id="progressValue">0 / 0</strong>
+        </div>
+        <div class="statusRow">
+          <span>成功</span>
+          <strong id="successValue">0</strong>
+        </div>
+        <div class="statusRow">
+          <span>失败</span>
+          <strong id="failedValue">0</strong>
+        </div>
+        <div class="currentTitle" id="currentTitle">当前处理：-</div>
+      </section>
+    </main>
+  </body>
+</html>
