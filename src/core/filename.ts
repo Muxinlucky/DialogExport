@@ -35,9 +35,16 @@ export function buildConversationFilename(index: number, title: string, date = n
   return buildPlatformConversationFilename('chatgpt', index, title, date);
 }
 
-export function buildPlatformConversationFilename(platformPrefix: string, index: number, title: string, date = new Date()): string {
+export function buildPlatformConversationFilename(
+  platformPrefix: string,
+  index: number,
+  title: string,
+  date = new Date(),
+  extension = 'md'
+): string {
   const safePrefix = sanitizeFilenamePart(platformPrefix, 'ai').toLowerCase().replace(/\s+/g, '-');
   const safeTitle = sanitizeFilenamePart(title);
   const safeIndex = String(index).padStart(4, '0');
-  return `${safePrefix}-${safeIndex}-${safeTitle}-${formatTimestampForFilename(date)}.md`;
+  const safeExtension = sanitizeFilenamePart(extension, 'md').toLowerCase().replace(/^\.+/, '') || 'md';
+  return `${safePrefix}-${safeIndex}-${safeTitle}-${formatTimestampForFilename(date)}.${safeExtension}`;
 }

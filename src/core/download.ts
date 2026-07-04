@@ -1,7 +1,11 @@
 import type { DownloadResult } from './types';
 
 export async function downloadMarkdown(filename: string, markdown: string): Promise<DownloadResult> {
-  const dataUrl = `data:text/markdown;charset=utf-8,${encodeURIComponent(markdown)}`;
+  return downloadTextFile(filename, markdown, 'text/markdown;charset=utf-8');
+}
+
+export async function downloadTextFile(filename: string, content: string, mimeType: string): Promise<DownloadResult> {
+  const dataUrl = `data:${mimeType},${encodeURIComponent(content)}`;
   const downloadId = await chrome.downloads.download({
     url: dataUrl,
     filename,

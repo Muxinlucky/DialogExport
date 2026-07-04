@@ -1,10 +1,12 @@
 import './popup.css';
 import { DEFAULT_EXPORT_STATE } from '../core/constants';
+import { buildExportFilePayload } from '../core/export-format';
 import { buildPlatformConversationFilename } from '../core/filename';
 import { conversationToMarkdown } from '../core/markdown';
 import type {
   ConversationItem,
   DownloadResult,
+  ExportFormat,
   ExportedConversation,
   ExportTaskState,
   PageInfo,
@@ -21,6 +23,7 @@ interface PopupPersistedState {
   url?: string;
   conversations: ConversationItem[];
   selectedIds: string[];
+  exportFormat?: ExportFormat;
   taskState?: ExportTaskState;
   updatedAt: string;
 }
@@ -30,6 +33,7 @@ const exportCurrentButton = getElement<HTMLButtonElement>('exportCurrentButton')
 const scanHistoryButton = getElement<HTMLButtonElement>('scanHistoryButton');
 const exportSelectedButton = getElement<HTMLButtonElement>('exportSelectedButton');
 const stopButton = getElement<HTMLButtonElement>('stopButton');
+const exportFormatSelect = getElement<HTMLSelectElement>('exportFormatSelect');
 const selectAllButton = getElement<HTMLButtonElement>('selectAllButton');
 const clearSelectionButton = getElement<HTMLButtonElement>('clearSelectionButton');
 const invertSelectionButton = getElement<HTMLButtonElement>('invertSelectionButton');
@@ -47,6 +51,7 @@ let activePageInfo: PageInfo | null = null;
 let state: ExportTaskState = { ...DEFAULT_EXPORT_STATE, errors: [], results: [] };
 let scannedConversations: ConversationItem[] = [];
 let selectedConversationIds = new Set<string>();
+let selectedExportFormat: ExportFormat = 'md';
 let exportStatePollId: number | undefined;
 
 void initializePopup();
@@ -65,6 +70,11 @@ exportSelectedButton.addEventListener('click', () => {
 
 stopButton.addEventListener('click', () => {
   void stopExportTask();
+});
+
+exportFormatSelect.addEventListener('change', () => {
+  selectedExportFormat = normalizeExportFormat(exportFormatSelect.value);
+  renderState();
 });
 
 selectAllButton.addEventListener('click', () => {
@@ -92,6 +102,8 @@ invertSelectionButton.addEventListener('click', () => {
 async function initializePopup(): Promise<void> {
   activeTab = await getActiveTab();
   const persistedState = await loadPersistedState();
+  selectedExportFormat = normalizeExportFormat(persistedState?.exportFormat || exportFormatSelect.value);
+  exportFormatSelect.value = selectedExportFormat;
 
   if (!activeTab?.id || !activeTab.url || !isHttpUrl(activeTab.url)) {
     setPageStatus('未识别支持的 AI 网页。');
@@ -166,11 +178,13 @@ async function exportCurrentConversation(): Promise<void> {
     }
 
     const markdown = conversationToMarkdown(conversation);
-    const filename = buildPlatformConversationFilename(getPlatformFilenamePrefix(), 1, conversation.title);
+    const exportFile = buildExportFilePayload(markdown, selectedExportFormat);
+    const filename = buildPlatformConversationFilename(getPlatformFilenamePrefix(), 1, conversation.title, new Date(), exportFile.extension);
     await sendRuntimeMessage<DownloadResult>({
-      type: 'DOWNLOAD_MARKDOWN',
+      type: 'DOWNLOAD_EXPORT_FILE',
       filename,
-      markdown
+      content: exportFile.content,
+      mimeType: exportFile.mimeType
     });
 
     state = {
@@ -288,7 +302,8 @@ async function exportSelectedConversations(): Promise<void> {
       tabId: activeTab.id,
       conversations: selectedConversations,
       platformId: activePageInfo.platformId,
-      platformName: activePageInfo.platform
+      platformName: activePageInfo.platform,
+      format: selectedExportFormat
     });
     setPageStatus(`开始导出 ${selectedConversations.length} 个选中对话...`);
     startExportStatePolling();
@@ -428,6 +443,7 @@ function updateButtonStates(): void {
   scanHistoryButton.disabled = !capabilities?.scanHistory || isCollecting || isExporting;
   exportSelectedButton.disabled = !capabilities?.exportSelectedConversations || isCollecting || isExporting || !hasScannedResults || !hasSelection;
   stopButton.disabled = !isExporting;
+  exportFormatSelect.disabled = isCollecting || isExporting;
   selectAllButton.disabled = isCollecting || isExporting || !hasScannedResults;
   clearSelectionButton.disabled = isCollecting || isExporting || !hasScannedResults;
   invertSelectionButton.disabled = isCollecting || isExporting || !hasScannedResults;
@@ -581,6 +597,7 @@ async function persistPopupState(): Promise<void> {
     url: activePageInfo.url,
     conversations: scannedConversations,
     selectedIds: Array.from(selectedConversationIds),
+    exportFormat: selectedExportFormat,
     taskState: state,
     updatedAt: new Date().toISOString()
   };
@@ -598,6 +615,10 @@ function getPopupStorage(): chrome.storage.StorageArea {
 
 function getPlatformFilenamePrefix(): string {
   return activePageInfo?.platformId || activePageInfo?.platform.toLowerCase().replace(/\s+/g, '-') || 'ai';
+}
+
+function normalizeExportFormat(value: unknown): ExportFormat {
+  return value === 'txt' || value === 'doc' ? value : 'md';
 }
 
 function shortenUrl(url: string): string {

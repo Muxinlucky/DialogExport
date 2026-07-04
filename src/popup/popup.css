@@ -162,6 +162,44 @@ button:disabled {
   border-color: var(--primary-hover);
 }
 
+.formatPanel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.formatLabel {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.formatSelect {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfefd;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.formatSelect:focus {
+  outline: 2px solid var(--primary-border);
+  outline-offset: 1px;
+}
+
 .selectionPanel {
   display: grid;
   gap: 8px;

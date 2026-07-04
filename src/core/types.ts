@@ -6,6 +6,8 @@ export type ExportStatus =
   | 'completed'
   | 'failed';
 
+export type ExportFormat = 'md' | 'txt' | 'doc';
+
 export interface ConversationItem {
   id: string;
   title: string;
@@ -56,7 +58,8 @@ export type RuntimeRequest =
   | { type: 'EXPORT_CURRENT_CONVERSATION' }
   | { type: 'COLLECT_SIDEBAR_CONVERSATIONS' }
   | { type: 'DOWNLOAD_MARKDOWN'; filename: string; markdown: string }
-  | { type: 'START_SELECTED_CONVERSATION_EXPORT'; tabId: number; conversations: ConversationItem[]; platformId?: string; platformName?: string }
+  | { type: 'DOWNLOAD_EXPORT_FILE'; filename: string; content: string; mimeType: string }
+  | { type: 'START_SELECTED_CONVERSATION_EXPORT'; tabId: number; conversations: ConversationItem[]; platformId?: string; platformName?: string; format?: ExportFormat }
   | { type: 'STOP_EXPORT_TASK' }
   | { type: 'GET_EXPORT_TASK_STATE' };
 

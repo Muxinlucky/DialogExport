@@ -30,7 +30,7 @@ Expand-Archive -Path ".\DialogExport-dist.zip" -DestinationPath ".\DialogExport"
    例如：DialogExport\dist
 ```
 
-注意：浏览器要加载的是 `dist` 文件夹，不是项目源码根目录。
+==注意：浏览器要加载的是 `dist` 文件夹，不是项目源码根目录。==
 
 如果不想使用命令，也可以到 GitHub Release 页面手动下载 `DialogExport-dist.zip`，解压后同样加载里面的 `dist` 文件夹。
 
@@ -42,7 +42,7 @@ Google AI Studio 当前不支持。
 
 ## 功能
 
-- 导出当前对话为 `.md` 文件
+- 支持 Markdown、TXT 和 Word(.doc) 三种导出格式
 - 扫描历史会话
 - 勾选要导出的历史会话
 - 批量导出选中的对话
@@ -52,20 +52,13 @@ Google AI Studio 当前不支持。
 
 ## 隐私说明
 
-DialogExport 只在浏览器本地运行。
-
-扩展只读取当前网页 DOM 中用户自己可见的对话内容，并通过浏览器下载能力保存为本地 Markdown 文件。
-
-不会上传聊天内容，不会读取 cookie、token、localStorage 或 IndexedDB。
+DialogExport 只在浏览器本地运行。扩展只读取当前网页 DOM 中用户自己可见的对话内容，并通过浏览器下载能力保存为本地 Markdown 文件。不会上传聊天内容，不会读取 cookie、token、localStorage 或 IndexedDB。
 
 ## 权限说明
 
 扩展使用的权限：
 
-- `tabs`
-- `scripting`
-- `downloads`
-- `storage`
+- tabs   scripting  downloads   storage
 
 扩展只申请受支持平台的域名权限，不申请 `<all_urls>`，不申请 `cookies`、`history` 或 `webRequest`。
 
@@ -83,15 +76,3 @@ npm run check:release
 ```text
 dist
 ```
-
-## 发布压缩包
-
-发布给普通用户时，可以把构建后的 `dist` 文件夹压缩成：
-
-```text
-DialogExport-dist.zip
-```
-
-然后上传到 GitHub Release。
-
-用户下载并解压后，只需要加载里面的 `dist` 文件夹。

@@ -8,7 +8,8 @@ import {
   EXPORT_DELAY_MS,
   TAB_LOAD_TIMEOUT_MS
 } from '../core/constants';
-import { downloadMarkdown } from '../core/download';
+import { downloadMarkdown, downloadTextFile } from '../core/download';
+import { buildExportFilePayload } from '../core/export-format';
 import { buildPlatformConversationFilename } from '../core/filename';
 import { logger } from '../core/logger';
 import { conversationToMarkdown } from '../core/markdown';
@@ -22,6 +23,7 @@ import { sleep } from '../core/sleep';
 import type {
   ConversationItem,
   DownloadResult,
+  ExportFormat,
   ExportedConversation,
   ExportStatus,
   ExportTaskState,
@@ -34,6 +36,7 @@ let stopRequested = false;
 let activeRunId = 0;
 let activePlatformId = 'chatgpt';
 let activePlatformName = 'ChatGPT';
+let activeExportFormat: ExportFormat = 'md';
 
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Dialog-Export installed');
@@ -47,10 +50,18 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     return true;
   }
 
+  if (request.type === 'DOWNLOAD_EXPORT_FILE') {
+    void downloadTextFile(request.filename, request.content, request.mimeType)
+      .then((result) => sendResponse(ok<DownloadResult>(result)))
+      .catch((error: unknown) => sendResponse(fail(error, '下载失败')));
+    return true;
+  }
+
   if (request.type === 'START_SELECTED_CONVERSATION_EXPORT') {
     void startSelectedConversationExport(request.tabId, request.conversations, {
       platformId: request.platformId,
-      platformName: request.platformName
+      platformName: request.platformName,
+      format: request.format
     })
       .then((state) => sendResponse(ok(state)))
       .catch((error: unknown) => sendResponse(fail(error, '启动导出失败')));
@@ -75,7 +86,7 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
 async function startSelectedConversationExport(
   tabId: number,
   conversations: ConversationItem[],
-  platform: { platformId?: string; platformName?: string }
+  platform: { platformId?: string; platformName?: string; format?: ExportFormat }
 ): Promise<ExportTaskState> {
   if (exportState.status === 'exporting') {
     return exportState;
@@ -90,6 +101,7 @@ async function startSelectedConversationExport(
   const runId = activeRunId;
   activePlatformId = sanitizePlatformPrefix(platform.platformId || inferPlatformPrefix(conversations[0]?.url) || 'chatgpt');
   activePlatformName = platform.platformName || activePlatformId;
+  activeExportFormat = normalizeExportFormat(platform.format);
 
   exportState = {
     ...createInitialExportState(),
@@ -135,14 +147,15 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
           throw new Error('当前对话没有可导出的消息。');
         }
 
-        const filename = buildPlatformConversationFilename(activePlatformId, index + 1, title);
         const markdown = conversationToMarkdown(exportedConversation);
+        const exportFile = buildExportFilePayload(markdown, activeExportFormat);
+        const filename = buildPlatformConversationFilename(activePlatformId, index + 1, title, new Date(), exportFile.extension);
 
         if (!markdown.trim()) {
           throw new Error('当前对话生成的 Markdown 为空。');
         }
 
-        await downloadMarkdown(filename, markdown);
+        await downloadTextFile(filename, exportFile.content, exportFile.mimeType);
 
         exportState = {
           ...exportState,
@@ -411,6 +424,10 @@ function inferPlatformPrefix(url?: string): string | null {
 
 function sanitizePlatformPrefix(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'ai';
+}
+
+function normalizeExportFormat(value: unknown): ExportFormat {
+  return value === 'txt' || value === 'doc' ? value : 'md';
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
