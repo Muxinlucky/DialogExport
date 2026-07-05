@@ -1,11 +1,11 @@
 import './popup.css';
 import { DEFAULT_EXPORT_STATE } from '../core/constants';
+import { downloadTextFile } from '../core/download';
 import { buildExportFilePayload } from '../core/export-format';
 import { buildPlatformConversationFilename } from '../core/filename';
 import { conversationToMarkdown } from '../core/markdown';
 import type {
   ConversationItem,
-  DownloadResult,
   ExportFormat,
   ExportedConversation,
   ExportTaskState,
@@ -180,12 +180,7 @@ async function exportCurrentConversation(): Promise<void> {
     const markdown = conversationToMarkdown(conversation);
     const exportFile = buildExportFilePayload(markdown, selectedExportFormat);
     const filename = buildPlatformConversationFilename(getPlatformFilenamePrefix(), 1, conversation.title, new Date(), exportFile.extension);
-    await sendRuntimeMessage<DownloadResult>({
-      type: 'DOWNLOAD_EXPORT_FILE',
-      filename,
-      content: exportFile.content,
-      mimeType: exportFile.mimeType
-    });
+    await downloadTextFile(filename, exportFile.content, exportFile.mimeType);
 
     state = {
       ...state,
