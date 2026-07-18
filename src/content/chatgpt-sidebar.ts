@@ -4,6 +4,7 @@ import {
   SIDEBAR_SCAN_MAX_WAIT_MS,
   SIDEBAR_SCAN_MIN_WAIT_MS,
   SIDEBAR_SCAN_STABLE_LIMIT,
+  SIDEBAR_SECTION_EXPAND_WAIT_MS,
   SUPPORTED_CHATGPT_ORIGINS
 } from '../core/constants';
 import type { ConversationItem } from '../core/types';
@@ -20,34 +21,39 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
     }
 
     const conversations = new Map<string, ConversationItem>();
+    const collapsedSections = await expandCollapsedSections(scrollContainer);
     let stableScrollCount = 0;
     let lastCount = 0;
 
-    collectVisibleConversations(document, conversations);
-
-    for (let scrollIndex = 0; scrollIndex < SIDEBAR_SCAN_MAX_SCROLLS; scrollIndex += 1) {
-      if (conversations.size > lastCount) {
-        stableScrollCount = 0;
-        lastCount = conversations.size;
-      } else {
-        stableScrollCount += 1;
-      }
-
-      if (stableScrollCount >= SIDEBAR_SCAN_STABLE_LIMIT || isScrolledToBottom(scrollContainer)) {
-        break;
-      }
-
-      scrollContainer.scrollTop = Math.min(
-        scrollContainer.scrollTop + Math.max(scrollContainer.clientHeight * 0.85, 320),
-        scrollContainer.scrollHeight
-      );
-      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
-
-      await sleep(randomWaitMs());
+    try {
       collectVisibleConversations(document, conversations);
-    }
 
-    collectVisibleConversations(document, conversations);
+      for (let scrollIndex = 0; scrollIndex < SIDEBAR_SCAN_MAX_SCROLLS; scrollIndex += 1) {
+        if (conversations.size > lastCount) {
+          stableScrollCount = 0;
+          lastCount = conversations.size;
+        } else {
+          stableScrollCount += 1;
+        }
+
+        if (stableScrollCount >= SIDEBAR_SCAN_STABLE_LIMIT || isScrolledToBottom(scrollContainer)) {
+          break;
+        }
+
+        scrollContainer.scrollTop = Math.min(
+          scrollContainer.scrollTop + Math.max(scrollContainer.clientHeight * 0.85, 320),
+          scrollContainer.scrollHeight
+        );
+        scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+        await sleep(randomWaitMs());
+        collectVisibleConversations(document, conversations);
+      }
+
+      collectVisibleConversations(document, conversations);
+    } finally {
+      await restoreCollapsedSections(collapsedSections);
+    }
 
     const result = Array.from(new Set(conversations.values()));
 
@@ -60,6 +66,114 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : '扫描 ChatGPT 历史会话失败。');
   }
+}
+
+interface CollapsedSectionSnapshot {
+  element: HTMLElement;
+  parent: HTMLElement | null;
+  label: string;
+}
+
+/**
+ * ChatGPT virtualizes project contents and does not render their conversation
+ * links until the project row is expanded. Open only rows that were collapsed
+ * when the scan started, then restore those rows after collection.
+ */
+async function expandCollapsedSections(scrollContainer: HTMLElement): Promise<CollapsedSectionSnapshot[]> {
+  const snapshots = findCollapsedSectionToggles(scrollContainer).map((element) => ({
+    element,
+    parent: element.parentElement,
+    label: element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 80) || 'section'
+  }));
+
+  for (const snapshot of snapshots) {
+    if (!snapshot.element.isConnected || snapshot.element.getAttribute('aria-expanded') !== 'false') {
+      continue;
+    }
+
+    snapshot.element.click();
+    await waitForSectionExpansion(snapshot.element);
+  }
+
+  return snapshots;
+}
+
+async function restoreCollapsedSections(snapshots: CollapsedSectionSnapshot[]): Promise<void> {
+  for (const snapshot of snapshots.reverse()) {
+    const element = snapshot.element.isConnected
+      ? snapshot.element
+      : findReplacementCollapsedToggle(snapshot);
+
+    if (!element || element.getAttribute('aria-expanded') !== 'true') {
+      continue;
+    }
+
+    element.click();
+    await sleep(Math.min(SIDEBAR_SECTION_EXPAND_WAIT_MS, 250));
+  }
+}
+
+function findCollapsedSectionToggles(container: HTMLElement): HTMLElement[] {
+  const candidates = Array.from(container.querySelectorAll<HTMLElement>(
+    '[aria-expanded="false"]'
+  ));
+
+  return candidates.filter((element) => {
+    if (!isVisibleElement(element) || !isProjectSectionToggle(element)) {
+      return false;
+    }
+
+    // A conversation row can contain an aria-expanded control for its menu;
+    // only expand controls that are not themselves conversation links.
+    return !element.closest('a[href*="/c/"]');
+  });
+}
+
+function isProjectSectionToggle(element: HTMLElement): boolean {
+  const tagName = element.tagName.toLowerCase();
+  const role = element.getAttribute('role') || '';
+  const label = `${element.getAttribute('aria-label') || ''} ${element.textContent || ''}`.toLowerCase();
+  const hasFolderIcon = Boolean(element.querySelector('svg, [data-icon*="folder" i], [class*="folder" i]'));
+  const isButtonLike = tagName === 'button' || role === 'button' || typeof (element as HTMLElement & { click?: unknown }).click === 'function';
+
+  if (!isButtonLike) {
+    return false;
+  }
+
+  // Prefer semantic folder/project labels, but also accept the generic folder
+  // row used by current ChatGPT builds where the visible label is arbitrary.
+  return hasFolderIcon || /project|项目|folder|文件夹|workspace|工作区|group|分组/i.test(label);
+}
+
+async function waitForSectionExpansion(element: HTMLElement): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < SIDEBAR_SECTION_EXPAND_WAIT_MS) {
+    if (!element.isConnected || element.getAttribute('aria-expanded') === 'true') {
+      await sleep(80);
+      return;
+    }
+    await sleep(80);
+  }
+}
+
+function findReplacementCollapsedToggle(snapshot: CollapsedSectionSnapshot): HTMLElement | null {
+  const parent = snapshot.parent;
+  if (!parent?.isConnected) {
+    return null;
+  }
+
+  return Array.from(parent.querySelectorAll<HTMLElement>('[aria-expanded="true"]'))
+    .find((element) => {
+      if (!isProjectSectionToggle(element)) {
+        return false;
+      }
+
+      const label = `${element.getAttribute('aria-label') || ''} ${element.textContent || ''}`
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+      return !snapshot.label || label.includes(snapshot.label.toLowerCase());
+    }) || null;
 }
 
 function collectVisibleConversations(container: ParentNode, conversations: Map<string, ConversationItem>): void {

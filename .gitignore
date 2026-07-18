@@ -1,26 +1,50 @@
-﻿node_modules/
+# Dependencies
+node_modules/
+
+# Build and release output
 dist/
 release/
 output/
+coverage/
 
+# Packaged browser extensions and archives
 *.zip
+*.crx
+*.xpi
+
+# Tool caches and generated metadata
+.vite/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-coverage/
-.vite/
-.turbo/
-*.tsbuildinfo
-
+# Local environment and secrets
 .env
 .env.*
 !.env.example
+*.pem
+*.key
 
+# Local agent/workspace files
+.agents/
+.codex/
+.claude/
+
+# Editors and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 Desktop.ini
-.vscode/
-.idea/
+
+# Duplicate local icon input; icon-source.png is the canonical source
+public/icons/icon.png
