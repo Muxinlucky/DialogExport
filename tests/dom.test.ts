@@ -50,44 +50,58 @@ describe('ChatGPT project conversations', () => {
     expect(getSidebarTitleForConversationUrl('https://chatgpt.com/g/g-p-project/c/conversation-1')).toBe('一战');
   });
 
-  it('expands collapsed project sections while scanning and restores them afterwards', async () => {
+  it('discovers conversations in collapsed projects through ChatGPT itself', async () => {
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getClientRects')
       .mockReturnValue([{ width: 200, height: 200 } as DOMRect] as unknown as DOMRectList);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/auth/session') {
+        return mockJsonResponse({ accessToken: 'temporary-session-token' });
+      }
+      if (url === '/backend-api/gizmos/snorlax/sidebar') {
+        return mockJsonResponse({ items: [{ gizmo: { id: 'g-p-paper' } }], cursor: null });
+      }
+      if (url === '/backend-api/gizmos/g-p-paper/conversations?cursor=0') {
+        return mockJsonResponse({
+          items: [{ id: 'hidden-conversation', title: '未展开的论文会话' }],
+          cursor: null
+        });
+      }
+
+      return mockJsonResponse({}, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     document.body.innerHTML = `
       <aside>
-        <div id="projects" style="height: 200px; overflow-y: auto">
-          <button id="project" aria-expanded="false">
-            <svg aria-label="folder"></svg><span>论文</span>
-          </button>
-          <div id="projectContent" hidden></div>
-        </div>
+        <a href="https://chatgpt.com/g/g-p-paper/project"><span>论文</span></a>
+        <button id="projectMenu" aria-expanded="false"><svg aria-label="folder"></svg>更多</button>
       </aside>`;
-
-    const project = document.querySelector<HTMLButtonElement>('#project')!;
-    const content = document.querySelector<HTMLDivElement>('#projectContent')!;
-    project.addEventListener('click', () => {
-      const expanded = project.getAttribute('aria-expanded') === 'true';
-      project.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-      content.hidden = expanded;
-      content.innerHTML = expanded
-        ? ''
-        : '<a href="https://chatgpt.com/c/project-conversation"><span>项目会话</span></a>';
-    });
-
-    Object.defineProperties(document.querySelector('#projects'), {
-      clientHeight: { value: 200 },
-      scrollHeight: { value: 200, configurable: true },
-      scrollTop: { value: 0, writable: true, configurable: true }
-    });
+    const menuClick = vi.fn();
+    document.querySelector('#projectMenu')?.addEventListener('click', menuClick);
 
     try {
       const conversations = await collectSidebarConversations();
 
-      expect(conversations.map((item) => item.id)).toContain('project-conversation');
-      expect(project.getAttribute('aria-expanded')).toBe('false');
+      expect(conversations).toContainEqual({
+        id: 'hidden-conversation',
+        title: '未展开的论文会话',
+        url: 'http://localhost:3000/g/g-p-paper/c/hidden-conversation'
+      });
+      expect(fetchMock).toHaveBeenCalledWith('/api/auth/session', expect.objectContaining({ credentials: 'include' }));
+      expect(menuClick).not.toHaveBeenCalled();
     } finally {
+      vi.unstubAllGlobals();
       rectSpy.mockRestore();
     }
   });
 });
+
+function mockJsonResponse(payload: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload
+  } as Response;
+}

@@ -27,7 +27,6 @@ export const SIDEBAR_SCAN_MAX_SCROLLS = 120;
 export const SIDEBAR_SCAN_STABLE_LIMIT = 5;
 export const SIDEBAR_SCAN_MIN_WAIT_MS = 800;
 export const SIDEBAR_SCAN_MAX_WAIT_MS = 1500;
-export const SIDEBAR_SECTION_EXPAND_WAIT_MS = 450;
 
 export const CHATGPT_SELECTORS = {
   main: 'main',

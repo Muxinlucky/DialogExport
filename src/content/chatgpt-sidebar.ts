@@ -4,13 +4,43 @@ import {
   SIDEBAR_SCAN_MAX_WAIT_MS,
   SIDEBAR_SCAN_MIN_WAIT_MS,
   SIDEBAR_SCAN_STABLE_LIMIT,
-  SIDEBAR_SECTION_EXPAND_WAIT_MS,
   SUPPORTED_CHATGPT_ORIGINS
 } from '../core/constants';
 import type { ConversationItem } from '../core/types';
 import { logger } from '../core/logger';
 
 const UNTITLED_CONVERSATION = 'untitled-conversation';
+const CHATGPT_SESSION_ENDPOINT = '/api/auth/session';
+const CHATGPT_PROJECTS_ENDPOINT = '/backend-api/gizmos/snorlax/sidebar';
+const CHATGPT_PROJECT_SCAN_MAX_PAGES = 50;
+
+interface ChatGptSessionResponse {
+  accessToken?: string;
+}
+
+interface ChatGptProjectSidebarItem {
+  gizmo?: {
+    id?: string;
+    display?: {
+      name?: string;
+    };
+  };
+}
+
+interface ChatGptProjectSidebarResponse {
+  items?: ChatGptProjectSidebarItem[];
+  cursor?: string | null;
+}
+
+interface ChatGptProjectConversation {
+  id?: string;
+  title?: string | null;
+}
+
+interface ChatGptProjectConversationsResponse {
+  items?: ChatGptProjectConversation[];
+  cursor?: string | null;
+}
 
 export async function collectSidebarConversations(): Promise<ConversationItem[]> {
   try {
@@ -21,39 +51,35 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
     }
 
     const conversations = new Map<string, ConversationItem>();
-    const collapsedSections = await expandCollapsedSections(scrollContainer);
     let stableScrollCount = 0;
     let lastCount = 0;
 
-    try {
-      collectVisibleConversations(document, conversations);
+    collectVisibleConversations(document, conversations);
+    await collectCollapsedProjectConversations(conversations);
 
-      for (let scrollIndex = 0; scrollIndex < SIDEBAR_SCAN_MAX_SCROLLS; scrollIndex += 1) {
-        if (conversations.size > lastCount) {
-          stableScrollCount = 0;
-          lastCount = conversations.size;
-        } else {
-          stableScrollCount += 1;
-        }
-
-        if (stableScrollCount >= SIDEBAR_SCAN_STABLE_LIMIT || isScrolledToBottom(scrollContainer)) {
-          break;
-        }
-
-        scrollContainer.scrollTop = Math.min(
-          scrollContainer.scrollTop + Math.max(scrollContainer.clientHeight * 0.85, 320),
-          scrollContainer.scrollHeight
-        );
-        scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
-
-        await sleep(randomWaitMs());
-        collectVisibleConversations(document, conversations);
+    for (let scrollIndex = 0; scrollIndex < SIDEBAR_SCAN_MAX_SCROLLS; scrollIndex += 1) {
+      if (conversations.size > lastCount) {
+        stableScrollCount = 0;
+        lastCount = conversations.size;
+      } else {
+        stableScrollCount += 1;
       }
 
+      if (stableScrollCount >= SIDEBAR_SCAN_STABLE_LIMIT || isScrolledToBottom(scrollContainer)) {
+        break;
+      }
+
+      scrollContainer.scrollTop = Math.min(
+        scrollContainer.scrollTop + Math.max(scrollContainer.clientHeight * 0.85, 320),
+        scrollContainer.scrollHeight
+      );
+      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+      await sleep(randomWaitMs());
       collectVisibleConversations(document, conversations);
-    } finally {
-      await restoreCollapsedSections(collapsedSections);
     }
+
+    collectVisibleConversations(document, conversations);
 
     const result = Array.from(new Set(conversations.values()));
 
@@ -68,112 +94,106 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
   }
 }
 
-interface CollapsedSectionSnapshot {
-  element: HTMLElement;
-  parent: HTMLElement | null;
-  label: string;
-}
+async function collectCollapsedProjectConversations(conversations: Map<string, ConversationItem>): Promise<void> {
+  try {
+    const sessionResponse = await fetch(CHATGPT_SESSION_ENDPOINT, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' }
+    });
 
-/**
- * ChatGPT virtualizes project contents and does not render their conversation
- * links until the project row is expanded. Open only rows that were collapsed
- * when the scan started, then restore those rows after collection.
- */
-async function expandCollapsedSections(scrollContainer: HTMLElement): Promise<CollapsedSectionSnapshot[]> {
-  const snapshots = findCollapsedSectionToggles(scrollContainer).map((element) => ({
-    element,
-    parent: element.parentElement,
-    label: element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 80) || 'section'
-  }));
-
-  for (const snapshot of snapshots) {
-    if (!snapshot.element.isConnected || snapshot.element.getAttribute('aria-expanded') !== 'false') {
-      continue;
-    }
-
-    snapshot.element.click();
-    await waitForSectionExpansion(snapshot.element);
-  }
-
-  return snapshots;
-}
-
-async function restoreCollapsedSections(snapshots: CollapsedSectionSnapshot[]): Promise<void> {
-  for (const snapshot of snapshots.reverse()) {
-    const element = snapshot.element.isConnected
-      ? snapshot.element
-      : findReplacementCollapsedToggle(snapshot);
-
-    if (!element || element.getAttribute('aria-expanded') !== 'true') {
-      continue;
-    }
-
-    element.click();
-    await sleep(Math.min(SIDEBAR_SECTION_EXPAND_WAIT_MS, 250));
-  }
-}
-
-function findCollapsedSectionToggles(container: HTMLElement): HTMLElement[] {
-  const candidates = Array.from(container.querySelectorAll<HTMLElement>(
-    '[aria-expanded="false"]'
-  ));
-
-  return candidates.filter((element) => {
-    if (!isVisibleElement(element) || !isProjectSectionToggle(element)) {
-      return false;
-    }
-
-    // A conversation row can contain an aria-expanded control for its menu;
-    // only expand controls that are not themselves conversation links.
-    return !element.closest('a[href*="/c/"]');
-  });
-}
-
-function isProjectSectionToggle(element: HTMLElement): boolean {
-  const tagName = element.tagName.toLowerCase();
-  const role = element.getAttribute('role') || '';
-  const label = `${element.getAttribute('aria-label') || ''} ${element.textContent || ''}`.toLowerCase();
-  const hasFolderIcon = Boolean(element.querySelector('svg, [data-icon*="folder" i], [class*="folder" i]'));
-  const isButtonLike = tagName === 'button' || role === 'button' || typeof (element as HTMLElement & { click?: unknown }).click === 'function';
-
-  if (!isButtonLike) {
-    return false;
-  }
-
-  // Prefer semantic folder/project labels, but also accept the generic folder
-  // row used by current ChatGPT builds where the visible label is arbitrary.
-  return hasFolderIcon || /project|项目|folder|文件夹|workspace|工作区|group|分组/i.test(label);
-}
-
-async function waitForSectionExpansion(element: HTMLElement): Promise<void> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < SIDEBAR_SECTION_EXPAND_WAIT_MS) {
-    if (!element.isConnected || element.getAttribute('aria-expanded') === 'true') {
-      await sleep(80);
+    if (!sessionResponse.ok) {
       return;
     }
-    await sleep(80);
+
+    const session = await sessionResponse.json() as ChatGptSessionResponse;
+    if (!session.accessToken) {
+      return;
+    }
+
+    const headers = {
+      Accept: 'application/json',
+      Authorization: `Bearer ${session.accessToken}`,
+      'Oai-Language': document.documentElement.lang || 'zh-CN'
+    };
+    const projects = await fetchAllProjects(headers);
+
+    for (const project of projects) {
+      await fetchProjectConversations(project.id, project.name, headers, conversations);
+    }
+  } catch (error) {
+    // DOM scanning still returns regular and already-expanded project chats when
+    // ChatGPT changes or temporarily rejects its private project-list endpoint.
+    logger.debug('ChatGPT collapsed project scan fallback failed', error);
   }
 }
 
-function findReplacementCollapsedToggle(snapshot: CollapsedSectionSnapshot): HTMLElement | null {
-  const parent = snapshot.parent;
-  if (!parent?.isConnected) {
-    return null;
+interface ChatGptProject {
+  id: string;
+  name?: string;
+}
+
+async function fetchAllProjects(headers: Record<string, string>): Promise<ChatGptProject[]> {
+  const projects = new Map<string, ChatGptProject>();
+  let cursor: string | null = null;
+
+  for (let page = 0; page < CHATGPT_PROJECT_SCAN_MAX_PAGES; page += 1) {
+    const endpoint = cursor
+      ? `${CHATGPT_PROJECTS_ENDPOINT}?cursor=${encodeURIComponent(cursor)}`
+      : CHATGPT_PROJECTS_ENDPOINT;
+    const response = await fetch(endpoint, { credentials: 'include', headers });
+
+    if (!response.ok) {
+      break;
+    }
+
+    const payload = await response.json() as ChatGptProjectSidebarResponse;
+    for (const item of payload.items || []) {
+      if (item.gizmo?.id) {
+        projects.set(item.gizmo.id, { id: item.gizmo.id, name: item.gizmo.display?.name });
+      }
+    }
+
+    cursor = payload.cursor || null;
+    if (!cursor) {
+      break;
+    }
   }
 
-  return Array.from(parent.querySelectorAll<HTMLElement>('[aria-expanded="true"]'))
-    .find((element) => {
-      if (!isProjectSectionToggle(element)) {
-        return false;
+  return Array.from(projects.values());
+}
+
+async function fetchProjectConversations(
+  projectId: string,
+  projectName: string | undefined,
+  headers: Record<string, string>,
+  conversations: Map<string, ConversationItem>
+): Promise<void> {
+  let cursor: string | null = '0';
+
+  for (let page = 0; page < CHATGPT_PROJECT_SCAN_MAX_PAGES && cursor !== null; page += 1) {
+    const endpoint = `/backend-api/gizmos/${encodeURIComponent(projectId)}/conversations?cursor=${encodeURIComponent(cursor)}`;
+    const response = await fetch(endpoint, { credentials: 'include', headers });
+
+    if (!response.ok) {
+      break;
+    }
+
+    const payload = await response.json() as ChatGptProjectConversationsResponse;
+    for (const item of payload.items || []) {
+      if (!item.id) {
+        continue;
       }
 
-      const label = `${element.getAttribute('aria-label') || ''} ${element.textContent || ''}`
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-      return !snapshot.label || label.includes(snapshot.label.toLowerCase());
-    }) || null;
+      addConversation(conversations, {
+        id: item.id,
+        title: item.title?.trim() || UNTITLED_CONVERSATION,
+        url: `${window.location.origin}/g/${encodeURIComponent(projectId)}/c/${encodeURIComponent(item.id)}`,
+        group: projectName?.trim() || undefined
+      });
+    }
+
+    cursor = payload.cursor || null;
+  }
 }
 
 function collectVisibleConversations(container: ParentNode, conversations: Map<string, ConversationItem>): void {
@@ -186,16 +206,27 @@ function collectVisibleConversations(container: ParentNode, conversations: Map<s
       continue;
     }
 
-    const idKey = `id:${item.id}`;
-    const urlKey = `url:${item.url}`;
-
-    if (conversations.has(idKey) || conversations.has(urlKey)) {
-      continue;
-    }
-
-    conversations.set(idKey, item);
-    conversations.set(urlKey, item);
+    addConversation(conversations, item);
   }
+}
+
+function addConversation(conversations: Map<string, ConversationItem>, item: ConversationItem): void {
+  const idKey = `id:${item.id}`;
+  const urlKey = `url:${item.url}`;
+  const existing = conversations.get(idKey) || conversations.get(urlKey);
+
+  if (existing) {
+    if (!existing.group && item.group) {
+      existing.group = item.group;
+    }
+    if (existing.title === UNTITLED_CONVERSATION && item.title !== UNTITLED_CONVERSATION) {
+      existing.title = item.title;
+    }
+    return;
+  }
+
+  conversations.set(idKey, item);
+  conversations.set(urlKey, item);
 }
 
 function findConversationLinks(container: ParentNode): HTMLAnchorElement[] {

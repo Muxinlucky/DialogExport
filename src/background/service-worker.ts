@@ -8,7 +8,8 @@ import {
   EXPORT_DELAY_MS,
   TAB_LOAD_TIMEOUT_MS
 } from '../core/constants';
-import { downloadMarkdown, downloadTextFile } from '../core/download';
+import { downloadBinaryFile, downloadMarkdown, downloadTextFile } from '../core/download';
+import { buildArchiveEntryPath, buildArchiveFilename, type ArchiveEntry } from '../core/archive';
 import { buildExportFilePayload } from '../core/export-format';
 import { buildPlatformConversationFilename } from '../core/filename';
 import { logger } from '../core/logger';
@@ -30,6 +31,7 @@ import type {
   RuntimeRequest,
   RuntimeResponse
 } from '../core/types';
+import { zipSync } from 'fflate';
 
 let exportState: ExportTaskState = createInitialExportState();
 let stopRequested = false;
@@ -37,6 +39,7 @@ let activeRunId = 0;
 let activePlatformId = 'chatgpt';
 let activePlatformName = 'ChatGPT';
 let activeExportFormat: ExportFormat = 'md';
+let activeArchiveExport = false;
 let activeWorkerTabId: number | undefined;
 
 const EXPORT_TASK_STORAGE_KEY = 'dialogExportBackgroundTask';
@@ -48,6 +51,7 @@ interface PersistedExportTask {
   platformId: string;
   platformName: string;
   exportFormat: ExportFormat;
+  archiveExport: boolean;
   workerTabId?: number;
 }
 
@@ -76,7 +80,8 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     void startSelectedConversationExport(request.tabId, request.conversations, {
       platformId: request.platformId,
       platformName: request.platformName,
-      format: request.format
+      format: request.format,
+      archive: request.archive
     })
       .then((state) => sendResponse(ok(state)))
       .catch((error: unknown) => sendResponse(fail(error, '启动导出失败')));
@@ -115,6 +120,7 @@ async function restorePersistedTask(): Promise<void> {
     activePlatformId = snapshot.platformId || 'chatgpt';
     activePlatformName = snapshot.platformName || 'ChatGPT';
     activeExportFormat = normalizeExportFormat(snapshot.exportFormat);
+    activeArchiveExport = snapshot.archiveExport === true;
     activeWorkerTabId = snapshot.workerTabId;
 
     if (exportState.status === 'exporting' || exportState.status === 'stopping') {
@@ -153,6 +159,7 @@ async function persistTask(): Promise<void> {
     platformId: activePlatformId,
     platformName: activePlatformName,
     exportFormat: activeExportFormat,
+    archiveExport: activeArchiveExport,
     workerTabId: activeWorkerTabId
   };
 
@@ -192,7 +199,7 @@ async function stopExportTask(): Promise<ExportTaskState> {
 async function startSelectedConversationExport(
   tabId: number,
   conversations: ConversationItem[],
-  platform: { platformId?: string; platformName?: string; format?: ExportFormat }
+  platform: { platformId?: string; platformName?: string; format?: ExportFormat; archive?: boolean }
 ): Promise<ExportTaskState> {
   await stateLoadPromise;
 
@@ -210,6 +217,7 @@ async function startSelectedConversationExport(
   activePlatformId = sanitizePlatformPrefix(platform.platformId || inferPlatformPrefix(conversations[0]?.url) || 'chatgpt');
   activePlatformName = platform.platformName || activePlatformId;
   activeExportFormat = normalizeExportFormat(platform.format);
+  activeArchiveExport = platform.archive === true;
 
   for (const conversation of conversations) {
     assertSupportedConversationUrl(conversation.url, activePlatformId);
@@ -268,6 +276,9 @@ async function removeTabSafely(tabId: number): Promise<void> {
 }
 
 async function runSelectedConversationExport(runId: number, tabId: number, conversations: ConversationItem[]): Promise<void> {
+  const archiveEntries: ArchiveEntry[] = [];
+  const usedArchivePaths = new Set<string>();
+
   try {
     const workerTab = await createWorkerTab(tabId);
     activeWorkerTabId = workerTab.id;
@@ -279,7 +290,7 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
 
     for (let index = 0; index < conversations.length; index += 1) {
       if (isStopped(runId)) {
-        await finishExportTask(runId, 'stopped');
+        await finishExportTask(runId, 'stopped', archiveEntries);
         return;
       }
 
@@ -311,13 +322,23 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
 
         const markdown = conversationToMarkdown(exportedConversation);
         const exportFile = buildExportFilePayload(markdown, activeExportFormat);
-        const filename = buildPlatformConversationFilename(activePlatformId, index + 1, title, new Date(), exportFile.extension);
+        const filename = buildArchiveEntryPath(
+          activeArchiveExport ? item.group : undefined,
+          title,
+          exportFile.extension,
+          usedArchivePaths
+        );
 
         if (!markdown.trim()) {
           throw new Error('当前对话生成的 Markdown 为空。');
         }
 
-        await downloadTextFile(filename, exportFile.content, exportFile.mimeType);
+        if (activeArchiveExport) {
+          archiveEntries.push({ path: filename, content: new TextEncoder().encode(exportFile.content) });
+        } else {
+          const individualFilename = buildPlatformConversationFilename(activePlatformId, index + 1, title, new Date(), exportFile.extension);
+          await downloadTextFile(individualFilename, exportFile.content, exportFile.mimeType);
+        }
 
         await updateExportState(runId, (state) => ({
           ...state,
@@ -353,7 +374,7 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
       }
 
       if (isStopped(runId)) {
-        await finishExportTask(runId, 'stopped');
+        await finishExportTask(runId, 'stopped', archiveEntries);
         return;
       }
 
@@ -362,7 +383,7 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
       }
     }
 
-    await finishExportTask(runId, stopRequested ? 'stopped' : 'completed');
+    await finishExportTask(runId, stopRequested ? 'stopped' : 'completed', archiveEntries);
   } catch (error) {
     await updateExportState(runId, (state) => ({
       ...state,
@@ -383,7 +404,7 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
   }
 }
 
-async function finishExportTask(runId: number, status: Extract<ExportStatus, 'completed' | 'stopped'>): Promise<void> {
+async function finishExportTask(runId: number, status: Extract<ExportStatus, 'completed' | 'stopped'>, archiveEntries: ArchiveEntry[] = []): Promise<void> {
   if (runId !== activeRunId) {
     return;
   }
@@ -393,6 +414,15 @@ async function finishExportTask(runId: number, status: Extract<ExportStatus, 'co
     status,
     currentTitle: status === 'completed' ? '导出完成' : state.currentTitle
   }));
+
+  if (activeArchiveExport && archiveEntries.length > 0) {
+    try {
+      const files = Object.fromEntries(archiveEntries.map((entry) => [entry.path, entry.content]));
+      await downloadBinaryFile(buildArchiveFilename(activePlatformId), zipSync(files), 'application/zip');
+    } catch (error) {
+      logger.warn('Failed to download ZIP archive', error);
+    }
+  }
 
   await downloadReportsSafely(status);
 }

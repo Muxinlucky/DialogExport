@@ -3,6 +3,7 @@ import { buildUtf8DataUrl } from '../src/core/download';
 import { buildConversationFilename, sanitizeFilenamePart } from '../src/core/filename';
 import { conversationToMarkdown } from '../src/core/markdown';
 import { buildExportFilePayload } from '../src/core/export-format';
+import { buildArchiveEntryPath, buildArchiveFilename } from '../src/core/archive';
 
 describe('filename handling', () => {
   it('removes Windows path characters and reserved names', () => {
@@ -20,6 +21,17 @@ describe('filename handling', () => {
     expect(buildConversationFilename(1, '这是一个非常长的对话标题'.repeat(8))).toBe(
       `${'这是一个非常长的对话标题'.repeat(8).slice(0, 48)}.md`
     );
+  });
+
+  it('puts project files in folders and disambiguates duplicate titles', () => {
+    const usedPaths = new Set<string>();
+    expect(buildArchiveEntryPath('论文', '第一天', 'md', usedPaths)).toBe('论文/第一天.md');
+    expect(buildArchiveEntryPath('论文', '第一天', 'md', usedPaths)).toBe('论文/第一天 (2).md');
+    expect(buildArchiveEntryPath(undefined, '第一天', 'md', usedPaths)).toBe('第一天.md');
+  });
+
+  it('builds a timestamped ZIP filename', () => {
+    expect(buildArchiveFilename('chatgpt', new Date(2026, 0, 2, 3, 4, 5))).toBe('chatgpt-export-20260102-030405.zip');
   });
 });
 

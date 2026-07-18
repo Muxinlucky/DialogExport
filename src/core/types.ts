@@ -60,7 +60,7 @@ export type RuntimeRequest =
   | { type: 'COLLECT_SIDEBAR_CONVERSATIONS' }
   | { type: 'DOWNLOAD_MARKDOWN'; filename: string; markdown: string }
   | { type: 'DOWNLOAD_EXPORT_FILE'; filename: string; content: string; mimeType: string }
-  | { type: 'START_SELECTED_CONVERSATION_EXPORT'; tabId: number; conversations: ConversationItem[]; platformId?: string; platformName?: string; format?: ExportFormat }
+  | { type: 'START_SELECTED_CONVERSATION_EXPORT'; tabId: number; conversations: ConversationItem[]; platformId?: string; platformName?: string; format?: ExportFormat; archive?: boolean }
   | { type: 'STOP_EXPORT_TASK' }
   | { type: 'GET_EXPORT_TASK_STATE' };
 

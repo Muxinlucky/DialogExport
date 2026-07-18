@@ -200,6 +200,15 @@ button:disabled {
   outline-offset: 1px;
 }
 
+.formatCheck {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .selectionPanel {
   display: grid;
   gap: 8px;

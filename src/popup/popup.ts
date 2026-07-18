@@ -27,6 +27,7 @@ interface PopupPersistedState {
   conversations: ConversationItem[];
   selectedIds: string[];
   exportFormat?: ExportFormat;
+  archiveExport?: boolean;
   taskState?: ExportTaskState;
   updatedAt: string;
 }
@@ -37,6 +38,7 @@ const scanHistoryButton = getElement<HTMLButtonElement>('scanHistoryButton');
 const exportSelectedButton = getElement<HTMLButtonElement>('exportSelectedButton');
 const stopButton = getElement<HTMLButtonElement>('stopButton');
 const exportFormatSelect = getElement<HTMLSelectElement>('exportFormatSelect');
+const archiveExportCheckbox = getElement<HTMLInputElement>('archiveExportCheckbox');
 const selectAllButton = getElement<HTMLButtonElement>('selectAllButton');
 const clearSelectionButton = getElement<HTMLButtonElement>('clearSelectionButton');
 const invertSelectionButton = getElement<HTMLButtonElement>('invertSelectionButton');
@@ -55,6 +57,7 @@ let state: ExportTaskState = { ...DEFAULT_EXPORT_STATE, errors: [], results: [] 
 let scannedConversations: ConversationItem[] = [];
 let selectedConversationIds = new Set<string>();
 let selectedExportFormat: ExportFormat = 'md';
+let archiveExport = false;
 let exportStatePollId: number | undefined;
 
 void initializePopup();
@@ -77,6 +80,11 @@ stopButton.addEventListener('click', () => {
 
 exportFormatSelect.addEventListener('change', () => {
   selectedExportFormat = normalizeExportFormat(exportFormatSelect.value);
+  renderState();
+});
+
+archiveExportCheckbox.addEventListener('change', () => {
+  archiveExport = archiveExportCheckbox.checked;
   renderState();
 });
 
@@ -106,7 +114,9 @@ async function initializePopup(): Promise<void> {
   activeTab = await getActiveTab();
   const persistedState = await loadPersistedState();
   selectedExportFormat = normalizeExportFormat(persistedState?.exportFormat || exportFormatSelect.value);
+  archiveExport = persistedState?.archiveExport === true;
   exportFormatSelect.value = selectedExportFormat;
+  archiveExportCheckbox.checked = archiveExport;
 
   if (!activeTab?.id || !activeTab.url || !isHttpUrl(activeTab.url)) {
     setPageStatus('未识别支持的 AI 网页。');
@@ -305,7 +315,8 @@ async function exportSelectedConversations(): Promise<void> {
       conversations: selectedConversations,
       platformId: activePageInfo.platformId,
       platformName: activePageInfo.platform,
-      format: selectedExportFormat
+      format: selectedExportFormat,
+      archive: archiveExport
     });
     setPageStatus(`开始导出 ${selectedConversations.length} 个选中对话...`);
     startExportStatePolling();
@@ -448,6 +459,7 @@ function updateButtonStates(): void {
   exportSelectedButton.disabled = !capabilities?.exportSelectedConversations || isCollecting || isExporting || !hasScannedResults || !hasSelection;
   stopButton.disabled = state.status !== 'exporting';
   exportFormatSelect.disabled = isCollecting || isExporting;
+  archiveExportCheckbox.disabled = isCollecting || isExporting;
   selectAllButton.disabled = isCollecting || isExporting || !hasScannedResults;
   clearSelectionButton.disabled = isCollecting || isExporting || !hasScannedResults;
   invertSelectionButton.disabled = isCollecting || isExporting || !hasScannedResults;
@@ -609,6 +621,7 @@ async function persistPopupState(): Promise<void> {
     conversations: scannedConversations,
     selectedIds: Array.from(selectedConversationIds),
     exportFormat: selectedExportFormat,
+    archiveExport,
     taskState: state,
     updatedAt: new Date().toISOString()
   };
