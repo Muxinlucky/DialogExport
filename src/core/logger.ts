@@ -1,6 +1,12 @@
 const PREFIX = '[Dialog-Export]';
+const DEBUG = false;
 
 export const logger = {
+  debug(message: string, ...args: unknown[]) {
+    if (DEBUG) {
+      console.debug(PREFIX, message, ...args);
+    }
+  },
   info(message: string, ...args: unknown[]) {
     console.info(PREFIX, message, ...args);
   },

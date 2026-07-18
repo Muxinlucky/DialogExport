@@ -1,0 +1,8 @@
+{
+  "extensionName": {
+    "message": "Dialog-Export"
+  },
+  "extensionDescription": {
+    "message": "Export AI web conversations locally as Markdown, text, or Word-compatible files."
+  }
+}

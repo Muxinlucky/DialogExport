@@ -1,0 +1,29 @@
+import { describe, expect, it } from 'vitest';
+import { domToMarkdown } from '../src/content/dom-to-markdown';
+import { dedupeCandidateElements, dedupeMessages } from '../src/platforms/common/dom-utils';
+
+describe('DOM conversion', () => {
+  it('handles backticks, links, lists and tables', () => {
+    document.body.innerHTML = `
+      <article>
+        <p><code>a \`\` b</code> <a href="https://example.com/a_(b)">link</a></p>
+        <ul><li>one</li><li>two</li></ul>
+        <table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>
+      </article>`;
+
+    const markdown = domToMarkdown(document.querySelector('article')!);
+    expect(markdown).toContain('```a `` b```');
+    expect(markdown).toContain('[link](<https://example.com/a_(b)>)');
+    expect(markdown).toContain('| A | B |');
+  });
+
+  it('removes nested selector duplicates but preserves separate equal messages', () => {
+    document.body.innerHTML = '<div id="a">same</div><div id="b">same</div><div id="outer"><span>nested</span></div>';
+    const outer = document.querySelector('#outer')!;
+    expect(dedupeCandidateElements([document.querySelector('#a')!, document.querySelector('#b')!, outer, outer.firstElementChild!])).toHaveLength(3);
+    expect(dedupeMessages([
+      { role: 'user', content: 'same' },
+      { role: 'user', content: 'same' }
+    ])).toHaveLength(2);
+  });
+});

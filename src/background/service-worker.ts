@@ -37,6 +37,21 @@ let activeRunId = 0;
 let activePlatformId = 'chatgpt';
 let activePlatformName = 'ChatGPT';
 let activeExportFormat: ExportFormat = 'md';
+let activeWorkerTabId: number | undefined;
+
+const EXPORT_TASK_STORAGE_KEY = 'dialogExportBackgroundTask';
+
+interface PersistedExportTask {
+  state: ExportTaskState;
+  stopRequested: boolean;
+  activeRunId: number;
+  platformId: string;
+  platformName: string;
+  exportFormat: ExportFormat;
+  workerTabId?: number;
+}
+
+const stateLoadPromise = restorePersistedTask();
 
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Dialog-Export installed');
@@ -69,26 +84,119 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
 
   if (request.type === 'STOP_EXPORT_TASK') {
-    stopRequested = true;
-    exportState = { ...exportState, status: 'stopped' };
-    sendResponse(ok(exportState));
-    return false;
+    void stopExportTask()
+      .then((state) => sendResponse(ok(state)))
+      .catch((error: unknown) => sendResponse(fail(error, '停止导出失败')));
+    return true;
   }
 
   if (request.type === 'GET_EXPORT_TASK_STATE') {
-    sendResponse(ok(exportState));
-    return false;
+    void stateLoadPromise
+      .then(() => sendResponse(ok(exportState)))
+      .catch((error: unknown) => sendResponse(fail(error, '读取导出状态失败')));
+    return true;
   }
 
   return false;
 });
+
+async function restorePersistedTask(): Promise<void> {
+  try {
+    const values = await chrome.storage.session.get(EXPORT_TASK_STORAGE_KEY);
+    const snapshot = values[EXPORT_TASK_STORAGE_KEY] as PersistedExportTask | undefined;
+
+    if (!snapshot?.state) {
+      return;
+    }
+
+    exportState = snapshot.state;
+    stopRequested = snapshot.stopRequested;
+    activeRunId = snapshot.activeRunId;
+    activePlatformId = snapshot.platformId || 'chatgpt';
+    activePlatformName = snapshot.platformName || 'ChatGPT';
+    activeExportFormat = normalizeExportFormat(snapshot.exportFormat);
+    activeWorkerTabId = snapshot.workerTabId;
+
+    if (exportState.status === 'exporting' || exportState.status === 'stopping') {
+      if (activeWorkerTabId) {
+        await removeTabSafely(activeWorkerTabId);
+      }
+
+      activeWorkerTabId = undefined;
+      stopRequested = false;
+      exportState = {
+        ...exportState,
+        status: 'failed',
+        currentTitle: '任务因浏览器后台重启而中断',
+        errors: [
+          ...exportState.errors,
+          {
+            title: exportState.currentTitle,
+            url: exportState.currentUrl || '',
+            reason: '浏览器后台服务已重启，任务已安全终止，请重新开始导出。'
+          }
+        ]
+      };
+      await persistTask();
+    }
+  } catch (error) {
+    logger.warn('Failed to restore export task state', error);
+    exportState = createInitialExportState();
+  }
+}
+
+async function persistTask(): Promise<void> {
+  const snapshot: PersistedExportTask = {
+    state: exportState,
+    stopRequested,
+    activeRunId,
+    platformId: activePlatformId,
+    platformName: activePlatformName,
+    exportFormat: activeExportFormat,
+    workerTabId: activeWorkerTabId
+  };
+
+  try {
+    await chrome.storage.session.set({ [EXPORT_TASK_STORAGE_KEY]: snapshot });
+  } catch (error) {
+    logger.warn('Failed to persist export task state', error);
+  }
+}
+
+async function updateExportState(
+  runId: number,
+  updater: (state: ExportTaskState) => ExportTaskState
+): Promise<boolean> {
+  if (runId !== activeRunId) {
+    return false;
+  }
+
+  exportState = updater(exportState);
+  await persistTask();
+  return true;
+}
+
+async function stopExportTask(): Promise<ExportTaskState> {
+  await stateLoadPromise;
+
+  if (exportState.status !== 'exporting' && exportState.status !== 'stopping') {
+    return exportState;
+  }
+
+  stopRequested = true;
+  exportState = { ...exportState, status: 'stopping' };
+  await persistTask();
+  return exportState;
+}
 
 async function startSelectedConversationExport(
   tabId: number,
   conversations: ConversationItem[],
   platform: { platformId?: string; platformName?: string; format?: ExportFormat }
 ): Promise<ExportTaskState> {
-  if (exportState.status === 'exporting') {
+  await stateLoadPromise;
+
+  if (exportState.status === 'exporting' || exportState.status === 'stopping') {
     return exportState;
   }
 
@@ -103,6 +211,10 @@ async function startSelectedConversationExport(
   activePlatformName = platform.platformName || activePlatformId;
   activeExportFormat = normalizeExportFormat(platform.format);
 
+  for (const conversation of conversations) {
+    assertSupportedConversationUrl(conversation.url, activePlatformId);
+  }
+
   exportState = {
     ...createInitialExportState(),
     status: 'exporting',
@@ -111,12 +223,60 @@ async function startSelectedConversationExport(
     currentUrl: conversations[0]?.url
   };
 
+  await persistTask();
+
   void runSelectedConversationExport(runId, tabId, conversations);
   return exportState;
 }
 
+async function createWorkerTab(sourceTabId: number): Promise<chrome.tabs.Tab> {
+  const sourceTab = await chrome.tabs.get(sourceTabId);
+  const workerTab = await chrome.tabs.create({
+    windowId: sourceTab.windowId,
+    url: 'about:blank',
+    active: false
+  });
+
+  if (!workerTab.id) {
+    throw new Error('浏览器没有返回工作标签页 ID。');
+  }
+
+  return workerTab;
+}
+
+async function cleanupWorkerTab(runId: number): Promise<void> {
+  if (runId !== activeRunId) {
+    return;
+  }
+
+  const tabId = activeWorkerTabId;
+  activeWorkerTabId = undefined;
+
+  if (tabId) {
+    await removeTabSafely(tabId);
+  }
+
+  await persistTask();
+}
+
+async function removeTabSafely(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch {
+    // The user may already have closed the temporary worker tab.
+  }
+}
+
 async function runSelectedConversationExport(runId: number, tabId: number, conversations: ConversationItem[]): Promise<void> {
   try {
+    const workerTab = await createWorkerTab(tabId);
+    activeWorkerTabId = workerTab.id;
+    await persistTask();
+
+    if (!activeWorkerTabId) {
+      throw new Error('无法创建批量导出的工作标签页。');
+    }
+
     for (let index = 0; index < conversations.length; index += 1) {
       if (isStopped(runId)) {
         await finishExportTask(runId, 'stopped');
@@ -124,18 +284,18 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
       }
 
       const item = conversations[index];
-      exportState = {
-        ...exportState,
+      await updateExportState(runId, (state) => ({
+        ...state,
         status: 'exporting',
         currentTitle: item.title,
         currentUrl: item.url
-      };
+      }));
 
       try {
-        await openConversationInTab(tabId, item.url);
+        await openConversationInTab(activeWorkerTabId, item.url);
         await sleep(randomRenderWaitMs());
 
-        const conversation = await extractConversationWithRetry(tabId);
+        const conversation = await extractConversationWithRetry(activeWorkerTabId);
         const title = conversation.title || item.title || 'untitled-conversation';
         const exportedConversation: ExportedConversation = {
           ...conversation,
@@ -157,11 +317,11 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
 
         await downloadTextFile(filename, exportFile.content, exportFile.mimeType);
 
-        exportState = {
-          ...exportState,
-          success: exportState.success + 1,
+        await updateExportState(runId, (state) => ({
+          ...state,
+          success: state.success + 1,
           results: [
-            ...exportState.results,
+            ...state.results,
             {
               title,
               url: item.url,
@@ -169,25 +329,25 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
               exportedAt: exportedConversation.exportedAt
             }
           ]
-        };
+        }));
       } catch (error) {
-        exportState = {
-          ...exportState,
-          failed: exportState.failed + 1,
+        await updateExportState(runId, (state) => ({
+          ...state,
+          failed: state.failed + 1,
           errors: [
-            ...exportState.errors,
+            ...state.errors,
             {
               title: item.title,
               url: item.url,
               reason: error instanceof Error ? error.message : '导出失败'
             }
           ]
-        };
+        }));
       } finally {
-        exportState = {
-          ...exportState,
-          current: Math.min(index + 1, exportState.total)
-        };
+        await updateExportState(runId, (state) => ({
+          ...state,
+          current: Math.min(index + 1, state.total)
+        }));
       }
 
       if (isStopped(runId)) {
@@ -202,20 +362,22 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
 
     await finishExportTask(runId, stopRequested ? 'stopped' : 'completed');
   } catch (error) {
-    exportState = {
-      ...exportState,
+    await updateExportState(runId, (state) => ({
+      ...state,
       status: stopRequested ? 'stopped' : 'failed',
       errors: [
-        ...exportState.errors,
+        ...state.errors,
         {
-          url: exportState.currentUrl || '',
-          title: exportState.currentTitle,
+          url: state.currentUrl || '',
+          title: state.currentTitle,
           reason: error instanceof Error ? error.message : '批量导出任务异常中断'
         }
       ]
-    };
+    }));
 
     await downloadReportsSafely(exportState.status);
+  } finally {
+    await cleanupWorkerTab(runId);
   }
 }
 
@@ -224,11 +386,11 @@ async function finishExportTask(runId: number, status: Extract<ExportStatus, 'co
     return;
   }
 
-  exportState = {
-    ...exportState,
+  await updateExportState(runId, (state) => ({
+    ...state,
     status,
-    currentTitle: status === 'completed' ? '导出完成' : exportState.currentTitle
-  };
+    currentTitle: status === 'completed' ? '导出完成' : state.currentTitle
+  }));
 
   await downloadReportsSafely(status);
 }
@@ -264,7 +426,7 @@ async function downloadReportsSafely(status: ExportStatus): Promise<void> {
 }
 
 async function openConversationInTab(tabId: number, url: string): Promise<void> {
-  await chrome.tabs.update(tabId, { url, active: true });
+  await chrome.tabs.update(tabId, { url, active: false });
   await waitForTabComplete(tabId);
 }
 
@@ -281,7 +443,7 @@ async function waitForTabComplete(tabId: number): Promise<void> {
       reject(new Error('等待会话页面加载超时。'));
     }, TAB_LOAD_TIMEOUT_MS);
 
-    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+    const listener = (updatedTabId: number, changeInfo: { status?: string }) => {
       if (updatedTabId === tabId && changeInfo.status === 'complete') {
         globalThis.clearTimeout(timeoutId);
         chrome.tabs.onUpdated.removeListener(listener);
@@ -371,6 +533,20 @@ function randomRenderWaitMs(): number {
   return CONVERSATION_RENDER_WAIT_MIN_MS + Math.floor(Math.random() * (CONVERSATION_RENDER_WAIT_MAX_MS - CONVERSATION_RENDER_WAIT_MIN_MS + 1));
 }
 
+function assertSupportedConversationUrl(url: string, expectedPlatformId: string): void {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`历史会话链接无效：${url}`);
+  }
+
+  if (parsed.protocol !== 'https:' || inferPlatformPrefix(url) !== expectedPlatformId) {
+    throw new Error(`历史会话链接不属于当前平台：${parsed.hostname}`);
+  }
+}
+
 function inferPlatformPrefix(url?: string): string | null {
   if (!url) {
     return null;
@@ -379,40 +555,45 @@ function inferPlatformPrefix(url?: string): string | null {
   try {
     const hostname = new URL(url).hostname;
 
-    if (hostname.includes('doubao.com')) {
+    if (matchesHostname(hostname, 'doubao.com')) {
       return 'doubao';
     }
 
     if (
-      hostname.includes('qwen.ai') ||
-      hostname.includes('qwenlm.ai') ||
-      hostname.includes('tongyi') ||
-      hostname.includes('qianwen')
+      matchesHostname(hostname, 'qwen.ai') ||
+      matchesHostname(hostname, 'qwenlm.ai') ||
+      matchesHostname(hostname, 'tongyi.aliyun.com') ||
+      matchesHostname(hostname, 'tongyi.com') ||
+      matchesHostname(hostname, 'qianwen.com')
     ) {
       return 'qianwen';
     }
 
-    if (hostname.includes('gemini.google.com')) {
+    if (matchesHostname(hostname, 'gemini.google.com')) {
       return 'gemini';
     }
 
-    if (hostname.includes('yuanbao.tencent.com')) {
+    if (matchesHostname(hostname, 'yuanbao.tencent.com')) {
       return 'yuanbao';
     }
 
-    if (hostname.includes('kimi.com') || hostname.includes('kimi.moonshot.cn')) {
+    if (matchesHostname(hostname, 'kimi.com') || matchesHostname(hostname, 'kimi.moonshot.cn')) {
       return 'kimi';
     }
 
-    if (hostname.includes('chat.deepseek.com')) {
+    if (matchesHostname(hostname, 'chat.deepseek.com')) {
       return 'deepseek';
     }
 
-    if (hostname.includes('claude.ai') || hostname.includes('claude.com')) {
+    if (matchesHostname(hostname, 'claude.ai') || matchesHostname(hostname, 'claude.com')) {
       return 'claude';
     }
 
-    if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
+    if (matchesHostname(hostname, 'grok.com') || matchesHostname(hostname, 'x.com')) {
+      return 'grok';
+    }
+
+    if (matchesHostname(hostname, 'chatgpt.com') || matchesHostname(hostname, 'chat.openai.com')) {
       return 'chatgpt';
     }
   } catch {
@@ -420,6 +601,10 @@ function inferPlatformPrefix(url?: string): string | null {
   }
 
   return null;
+}
+
+function matchesHostname(hostname: string, base: string): boolean {
+  return hostname === base || hostname.endsWith(`.${base}`);
 }
 
 function sanitizePlatformPrefix(value: string): string {

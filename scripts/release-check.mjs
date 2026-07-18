@@ -1,11 +1,14 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import AdmZip from 'adm-zip';
+import sharp from 'sharp';
 
 const rootDir = process.cwd();
 const manifestPath = resolve(rootDir, 'dist', 'manifest.json');
 const distDir = resolve(rootDir, 'dist');
 const sourceTargets = ['src', 'manifest.json', 'package.json'];
 const distTargets = ['dist'];
+const archivePath = resolve(rootDir, 'DialogExport-dist.zip');
 
 const forbiddenPermissions = new Set(['cookies', 'history', 'webRequest', '<all_urls>']);
 const removedPlatformHosts = [
@@ -88,8 +91,31 @@ if (!existsSync(manifestPath)) {
   const contentMatches = (manifest.content_scripts || []).flatMap((script) => script.matches || []);
   const manifestText = JSON.stringify(manifest, null, 2);
 
-  if (manifest.name !== 'Dialog-Export') {
-    fail(`manifest name should be Dialog-Export, got "${manifest.name}"`);
+  if (manifest.name !== 'Dialog-Export' && manifest.name !== '__MSG_extensionName__') {
+    fail(`manifest name should be Dialog-Export or localized placeholder, got "${manifest.name}"`);
+  }
+
+  const packageJson = readJson(resolve(rootDir, 'package.json'));
+  if (manifest.version !== packageJson.version) {
+    fail(`manifest/package versions differ: ${manifest.version} vs ${packageJson.version}`);
+  }
+
+  for (const required of [
+    'src/popup/popup.html',
+    'src/background/service-worker.js',
+    'src/content/index.js',
+    'icons/icon128.png',
+    '_locales/zh_CN/messages.json',
+    '_locales/en/messages.json'
+  ]) {
+    if (!existsSync(join(distDir, required))) {
+      fail(`dist is missing required file ${required}`);
+    }
+  }
+
+  const iconMetadata = await sharp(join(distDir, 'icons', 'icon128.png')).metadata();
+  if (iconMetadata.width !== 128 || iconMetadata.height !== 128 || (iconMetadata.channels || 0) < 4) {
+    fail('dist/icons/icon128.png must be a 128x128 PNG with alpha padding.');
   }
 
   for (const permission of permissions) {
@@ -118,6 +144,22 @@ scanFiles(sourceTargets, removedPlatformHosts, 'source');
 scanFiles(distTargets, removedPlatformHosts, 'dist');
 scanFiles(sourceTargets, forbiddenImplementationMarkers, 'source');
 scanFiles(distTargets, forbiddenImplementationMarkers, 'dist');
+
+if (process.argv.includes('--archive')) {
+  if (!existsSync(archivePath)) {
+    fail('DialogExport-dist.zip does not exist. Run npm run release first.');
+  } else {
+    const zip = new AdmZip(archivePath);
+    const entries = zip.getEntries().filter((entry) => !entry.isDirectory).map((entry) => entry.entryName);
+    if (!entries.includes('manifest.json')) {
+      fail('DialogExport-dist.zip must contain manifest.json at its root.');
+    }
+    if (entries.some((entry) => entry.startsWith('dist/'))) {
+      fail('DialogExport-dist.zip must not contain a nested dist directory.');
+    }
+    console.log(`Archive contains ${entries.length} files with manifest at root.`);
+  }
+}
 
 if (process.exitCode) {
   process.exit(process.exitCode);

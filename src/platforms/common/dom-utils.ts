@@ -90,22 +90,39 @@ export function isUiOnlyText(text: string): boolean {
 }
 
 export function dedupeMessages(messages: ChatMessage[]): ChatMessage[] {
-  const seen = new Set<string>();
   const result: ChatMessage[] = [];
 
   for (const message of messages) {
     const content = normalizeMessageText(message.content);
-    const key = `${message.role}:${content}`;
 
-    if (!content || isUiOnlyText(content) || seen.has(key)) {
+    if (!content || isUiOnlyText(content)) {
       continue;
     }
 
-    seen.add(key);
     result.push({ ...message, content });
   }
 
   return result;
+}
+
+export function dedupeCandidateElements(elements: Element[]): Element[] {
+  const unique = uniqueElements(elements);
+
+  return unique.filter((element, index) => {
+    const text = normalizeMessageText(element.textContent || '');
+
+    if (!text) {
+      return true;
+    }
+
+    return !unique.some((other, otherIndex) => {
+      if (index === otherIndex || !other.contains(element)) {
+        return false;
+      }
+
+      return normalizeMessageText(other.textContent || '') === text;
+    });
+  });
 }
 
 export function findMainContentRoots(): Element[] {

@@ -4,6 +4,7 @@ import {
 } from '../../core/constants';
 import type { ConversationItem } from '../../core/types';
 import type { PlatformId } from '../types';
+import { logger } from '../../core/logger';
 
 export interface SidebarScanConfig {
   platformId: PlatformId;
@@ -66,7 +67,7 @@ export async function scanSidebarConversationsByConfig(config: SidebarScanConfig
     }
 
     const conversations = Array.from(records.values()).map((record) => record.item);
-    console.log(`[Dialog-Export] ${config.platformName} scanned conversations`, conversations);
+    logger.debug(`${config.platformName} scanned conversations`, conversations);
 
     if (conversations.length === 0) {
       throw new Error(config.noResultError || `${config.platformName} 未发现历史会话，请确认当前账号有历史对话并已加载侧边栏。`);
@@ -283,7 +284,7 @@ function uniqueElements<T extends Element>(elements: T[]): T[] {
 }
 
 function logRejectedCandidate(config: SidebarScanConfig, title: string, href: string, reason: string): void {
-  console.log(`[Dialog-Export] ${config.platformName} rejected sidebar candidate`, {
+  logger.debug(`${config.platformName} rejected sidebar candidate`, {
     title: title || 'untitled',
     href,
     reason

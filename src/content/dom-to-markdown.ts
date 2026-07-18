@@ -117,8 +117,10 @@ function convertInlineCode(element: Element): string {
     return '';
   }
 
-  const delimiter = text.includes('`') ? '``' : '`';
-  return `${delimiter}${text}${delimiter}`;
+  const longestRun = (text.match(/`+/g) || []).reduce((max, value) => Math.max(max, value.length), 0);
+  const delimiter = '`'.repeat(longestRun + 1);
+  const padding = /^`|`$|^\s|\s$/.test(text) ? ' ' : '';
+  return `${delimiter}${padding}${text}${padding}${delimiter}`;
 }
 
 function convertLink(element: Element, context: ConvertContext): string {
@@ -129,7 +131,8 @@ function convertLink(element: Element, context: ConvertContext): string {
     return text;
   }
 
-  return `[${text.replace(/\]/g, '\\]')}](${href})`;
+  const safeHref = href.replace(/>/g, '%3E');
+  return `[${text.replace(/\]/g, '\\]')}](<${safeHref}>)`;
 }
 
 function convertHeading(element: Element, context: ConvertContext): string {

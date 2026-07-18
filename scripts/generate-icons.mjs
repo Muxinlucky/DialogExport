@@ -57,11 +57,21 @@ async function main() {
 
   for (const size of sizes) {
     const output = resolve(iconsDir, `icon${size}.png`);
+    const artworkSize = Math.max(1, Math.round(size * 0.75));
+    const padding = Math.floor((size - artworkSize) / 2);
+    const remainingPadding = size - artworkSize - padding;
     await sharp(input)
       .extract({ left, top, width: squareSize, height: squareSize })
-      .resize(size, size, {
+      .resize(artworkSize, artworkSize, {
         fit: 'cover',
         kernel: sharp.kernel.lanczos3
+      })
+      .extend({
+        top: padding,
+        bottom: remainingPadding,
+        left: padding,
+        right: remainingPadding,
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
       })
       .png()
       .toFile(output);

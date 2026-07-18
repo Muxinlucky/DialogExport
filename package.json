@@ -4,18 +4,27 @@
   "private": true,
   "description": "Local-only AI web conversation Markdown exporter for Chrome and Microsoft Edge.",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
-    "build": "tsc --noEmit && vite build --mode popup && vite build --mode background && vite build --mode content",
+    "build": "npm run clean && tsc --noEmit && vite build --mode popup && vite build --mode background && vite build --mode content",
     "dev": "vite build --mode popup --watch",
     "icons": "node scripts/generate-icons.mjs",
-    "check:release": "npm run icons && npm run build && node scripts/release-check.mjs",
-    "clean": "powershell -NoProfile -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }\""
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:release": "npm run test && npm run build && node scripts/release-check.mjs",
+    "release": "npm run icons && npm run check:release && node scripts/package-release.mjs && node scripts/release-check.mjs --archive",
+    "clean": "node scripts/clean.mjs"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.268",
-    "@types/node": "^20.14.15",
+    "@types/chrome": "^0.2.2",
+    "@types/node": "^24.0.0",
+    "adm-zip": "^0.6.0",
+    "jsdom": "^29.1.1",
     "sharp": "^0.35.3",
-    "typescript": "^5.5.4",
-    "vite": "^5.4.11"
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   }
 }

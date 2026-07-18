@@ -7,6 +7,7 @@ import {
   SUPPORTED_CHATGPT_ORIGINS
 } from '../core/constants';
 import type { ConversationItem } from '../core/types';
+import { logger } from '../core/logger';
 
 const UNTITLED_CONVERSATION = 'untitled-conversation';
 
@@ -54,7 +55,7 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
       throw new Error('未发现历史会话，请确认当前账号有历史对话并且侧边栏已加载。');
     }
 
-    console.log('[Dialog-Export] scanned ChatGPT sidebar conversations', result);
+    logger.debug('scanned ChatGPT sidebar conversations', result);
     return result;
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : '扫描 ChatGPT 历史会话失败。');

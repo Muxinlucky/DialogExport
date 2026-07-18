@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
@@ -23,6 +23,10 @@ function copyManifestPlugin(): Plugin {
           resolve(outIconsDir, `icon${size}.png`)
         );
       }
+
+      cpSync(resolve(rootDir, 'public', '_locales'), resolve(outDir, '_locales'), {
+        recursive: true
+      });
     }
   };
 }
@@ -52,11 +56,7 @@ export default defineConfig(({ mode }) => {
           formats: ['es'],
           fileName: () => 'src/background/service-worker.js'
         },
-        rollupOptions: {
-          output: {
-            inlineDynamicImports: true
-          }
-        }
+        rollupOptions: {}
       }
     };
   }
@@ -73,11 +73,7 @@ export default defineConfig(({ mode }) => {
           name: 'GptDialogContent',
           fileName: () => 'src/content/index.js'
         },
-        rollupOptions: {
-          output: {
-            inlineDynamicImports: true
-          }
-        }
+        rollupOptions: {}
       }
     };
   }

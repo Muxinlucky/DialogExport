@@ -1,5 +1,6 @@
 import { SIDEBAR_SCAN_MAX_SCROLLS, SIDEBAR_SCAN_STABLE_LIMIT } from '../../core/constants';
 import type { ConversationItem } from '../../core/types';
+import { logger } from '../../core/logger';
 
 const ALLOWED_HOSTNAMES = ['grok.com', 'x.com'];
 
@@ -439,7 +440,7 @@ function reject(debug: GrokScanDebug, title: string, href: string | undefined, r
 }
 
 function logGrokScanDebug(debug: GrokScanDebug): void {
-  console.log('[Dialog-Export] grok sidebar scan debug', {
+  logger.debug('grok sidebar scan debug', {
     ...debug,
     rejected: debug.rejected.slice(0, 30),
     clickableSamples: debug.clickableSamples.slice(0, 10)

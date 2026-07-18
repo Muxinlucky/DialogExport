@@ -4,6 +4,7 @@ import type { ChatMessage, ExportedConversation } from '../../core/types';
 import type { GenericConversationOptions, PageDiagnosis, PlatformConversationConfig } from '../types';
 import {
   dedupeMessages,
+  dedupeCandidateElements,
   detectRoleFromElement,
   findMainContentRoots,
   findMessageCandidates,
@@ -128,7 +129,7 @@ function extractMessagesWithSelectors(options: GenericConversationOptions): Chat
     ...queryAllSafe(options.userSelectors || []),
     ...queryAllSafe(options.assistantSelectors || [])
   ];
-  const candidates = uniqueElements([...scopedElements, ...globalElements])
+  const candidates = dedupeCandidateElements(uniqueElements([...scopedElements, ...globalElements]))
     .filter((element) => isVisibleElement(element) && !isExcludedElement(element));
 
   return dedupeMessages(candidates.map((element) => extractMessageFromElement(element, options)).filter(Boolean) as ChatMessage[]);

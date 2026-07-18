@@ -1,5 +1,6 @@
 import { SIDEBAR_SCAN_MAX_SCROLLS, SIDEBAR_SCAN_STABLE_LIMIT } from '../../core/constants';
 import type { ConversationItem } from '../../core/types';
+import { logger } from '../../core/logger';
 
 const ALLOWED_HOSTNAMES = ['chat.deepseek.com'];
 
@@ -570,7 +571,7 @@ function reject(debug: DeepSeekScanDebug, title: string, href: string | undefine
 }
 
 function logDeepSeekScanDebug(debug: DeepSeekScanDebug): void {
-  console.log('[Dialog-Export] deepseek sidebar scan debug', {
+  logger.debug('deepseek sidebar scan debug', {
     ...debug,
     rejected: debug.rejected.slice(0, 40),
     clickableSamples: debug.clickableSamples.slice(0, 12)

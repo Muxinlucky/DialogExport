@@ -1,9 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Dialog-Export",
+  "name": "__MSG_extensionName__",
   "version": "0.1.0",
-  "description": "Export AI web conversations to local Markdown files.",
-  "permissions": ["tabs", "scripting", "downloads", "storage"],
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "zh_CN",
+  "minimum_chrome_version": "114",
+  "permissions": ["scripting", "downloads", "storage"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",

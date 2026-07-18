@@ -1,5 +1,6 @@
 import { SIDEBAR_SCAN_MAX_SCROLLS, SIDEBAR_SCAN_STABLE_LIMIT } from '../../core/constants';
 import type { ConversationItem } from '../../core/types';
+import { logger } from '../../core/logger';
 
 const ALLOWED_HOSTNAMES = [
   'chat.qwen.ai',
@@ -632,7 +633,7 @@ function reject(debug: QwenScanDebug, title: string, href: string | undefined, r
 }
 
 function logQwenScanDebug(debug: QwenScanDebug): void {
-  console.log('[Dialog-Export] qwen sidebar scan debug', {
+  logger.debug('qwen sidebar scan debug', {
     ...debug,
     rejected: debug.rejected.slice(0, 30),
     clickableSamples: debug.clickableSamples.slice(0, 10)

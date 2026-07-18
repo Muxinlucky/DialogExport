@@ -16,10 +16,13 @@ import type {
 import type { PlatformId } from '../platforms';
 
 const POPUP_STATE_KEY = 'dialogExportPopupState';
+const POPUP_STATE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 interface PopupPersistedState {
   platformId?: PlatformId;
   platformName?: string;
+  tabId?: number;
+  origin?: string;
   url?: string;
   conversations: ConversationItem[];
   selectedIds: string[];
@@ -115,18 +118,22 @@ async function initializePopup(): Promise<void> {
   try {
     activePageInfo = await sendTabMessage<PageInfo>(activeTab.id, { type: 'PING_PLATFORM_PAGE' });
     const backgroundState = await sendRuntimeMessage<ExportTaskState>({ type: 'GET_EXPORT_TASK_STATE' });
-    const isSamePlatform = persistedState?.platformId === activePageInfo.platformId;
+    const persisted = persistedState;
+    const isSameContext = persisted !== null
+      && persisted.platformId === activePageInfo.platformId
+      && persisted.tabId === activeTab.id
+      && persisted.origin === getUrlOrigin(activePageInfo.url);
 
-    if (isSamePlatform && persistedState) {
-      scannedConversations = persistedState.conversations || [];
+    if (isSameContext && persisted) {
+      scannedConversations = persisted.conversations || [];
       selectedConversationIds = new Set(
-        (persistedState.selectedIds || []).filter((id) => scannedConversations.some((conversation) => conversation.id === id))
+        (persisted.selectedIds || []).filter((id) => scannedConversations.some((conversation) => conversation.id === id))
       );
     }
 
     state = normalizeDisplayState(
-      backgroundState.status === 'idle' && isSamePlatform && persistedState?.taskState
-        ? persistedState.taskState
+      backgroundState.status === 'idle' && isSameContext && persisted?.taskState
+        ? persisted.taskState
         : backgroundState
     );
     setPageStatus(`已识别：${activePageInfo.platform}`);
@@ -135,7 +142,7 @@ async function initializePopup(): Promise<void> {
       setPageStatus(`已识别：${activePageInfo.platform}。当前平台暂不支持历史批量导出，可使用“导出当前对话”。`);
     }
 
-    if (state.status === 'exporting') {
+    if (state.status === 'exporting' || state.status === 'stopping') {
       startExportStatePolling();
     }
   } catch (error) {
@@ -343,6 +350,8 @@ async function refreshExportState(): Promise<void> {
     } else if (state.status === 'stopped') {
       setPageStatus(`导出已停止：成功 ${state.success} 个，失败 ${state.failed} 个。`);
       stopExportStatePolling();
+    } else if (state.status === 'stopping') {
+      setPageStatus('正在停止：当前会话处理完成后将安全结束。');
     } else if (state.status === 'failed') {
       stopExportStatePolling();
     }
@@ -429,7 +438,7 @@ function renderState(): void {
 
 function updateButtonStates(): void {
   const isCollecting = state.status === 'collecting';
-  const isExporting = state.status === 'exporting';
+  const isExporting = state.status === 'exporting' || state.status === 'stopping';
   const hasScannedResults = scannedConversations.length > 0;
   const hasSelection = getSelectedCount() > 0;
   const capabilities = activePageInfo?.capabilities;
@@ -437,7 +446,7 @@ function updateButtonStates(): void {
   exportCurrentButton.disabled = !capabilities?.exportCurrentConversation || isCollecting || isExporting;
   scanHistoryButton.disabled = !capabilities?.scanHistory || isCollecting || isExporting;
   exportSelectedButton.disabled = !capabilities?.exportSelectedConversations || isCollecting || isExporting || !hasScannedResults || !hasSelection;
-  stopButton.disabled = !isExporting;
+  stopButton.disabled = state.status !== 'exporting';
   exportFormatSelect.disabled = isCollecting || isExporting;
   selectAllButton.disabled = isCollecting || isExporting || !hasScannedResults;
   clearSelectionButton.disabled = isCollecting || isExporting || !hasScannedResults;
@@ -575,7 +584,12 @@ async function loadPersistedState(): Promise<PopupPersistedState | null> {
   try {
     const values = await getPopupStorage().get(POPUP_STATE_KEY);
     const value = values[POPUP_STATE_KEY] as PopupPersistedState | undefined;
-    return value || null;
+    if (!value) {
+      return null;
+    }
+
+    const age = Date.now() - Date.parse(value.updatedAt);
+    return Number.isFinite(age) && age >= 0 && age <= POPUP_STATE_MAX_AGE_MS ? value : null;
   } catch {
     return null;
   }
@@ -589,6 +603,8 @@ async function persistPopupState(): Promise<void> {
   const payload: PopupPersistedState = {
     platformId: activePageInfo.platformId as PlatformId,
     platformName: activePageInfo.platform,
+    tabId: activeTab?.id,
+    origin: getUrlOrigin(activePageInfo.url),
     url: activePageInfo.url,
     conversations: scannedConversations,
     selectedIds: Array.from(selectedConversationIds),
@@ -622,6 +638,14 @@ function shortenUrl(url: string): string {
     return `${parsed.host}${parsed.pathname}`;
   } catch {
     return url;
+  }
+}
+
+function getUrlOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
   }
 }
 

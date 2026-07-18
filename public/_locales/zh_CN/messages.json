@@ -1,0 +1,8 @@
+{
+  "extensionName": {
+    "message": "Dialog-Export"
+  },
+  "extensionDescription": {
+    "message": "将 ChatGPT、Claude、Gemini 等 AI 网页对话安全导出为本地 Markdown、TXT 或 Word 兼容文件。"
+  }
+}

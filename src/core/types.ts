@@ -2,6 +2,7 @@ export type ExportStatus =
   | 'idle'
   | 'collecting'
   | 'exporting'
+  | 'stopping'
   | 'stopped'
   | 'completed'
   | 'failed';
