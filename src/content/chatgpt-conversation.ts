@@ -2,6 +2,7 @@ import { CHATGPT_SELECTORS, CONVERSATION_LOAD_TIMEOUT_MS } from '../core/constan
 import { formatDateTime } from '../core/markdown';
 import type { ChatMessage, ExportedConversation } from '../core/types';
 import { domToMarkdown } from './dom-to-markdown';
+import { getSidebarTitleForConversationUrl } from './chatgpt-sidebar';
 
 export async function exportCurrentConversation(): Promise<ExportedConversation> {
   try {
@@ -75,6 +76,12 @@ function findMessageContentRoot(messageElement: Element): Element | null {
 }
 
 function getConversationTitle(): string {
+  const sidebarTitle = getSidebarTitleForConversationUrl(window.location.href);
+
+  if (sidebarTitle) {
+    return sidebarTitle;
+  }
+
   for (const selector of CHATGPT_SELECTORS.conversationTitleCandidates) {
     try {
       const value = document.querySelector(selector)?.textContent?.trim();

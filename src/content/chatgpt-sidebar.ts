@@ -23,7 +23,7 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
     let stableScrollCount = 0;
     let lastCount = 0;
 
-    collectVisibleConversations(scrollContainer, conversations);
+    collectVisibleConversations(document, conversations);
 
     for (let scrollIndex = 0; scrollIndex < SIDEBAR_SCAN_MAX_SCROLLS; scrollIndex += 1) {
       if (conversations.size > lastCount) {
@@ -44,10 +44,10 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
       scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
 
       await sleep(randomWaitMs());
-      collectVisibleConversations(scrollContainer, conversations);
+      collectVisibleConversations(document, conversations);
     }
 
-    collectVisibleConversations(scrollContainer, conversations);
+    collectVisibleConversations(document, conversations);
 
     const result = Array.from(new Set(conversations.values()));
 
@@ -62,7 +62,7 @@ export async function collectSidebarConversations(): Promise<ConversationItem[]>
   }
 }
 
-function collectVisibleConversations(container: Element, conversations: Map<string, ConversationItem>): void {
+function collectVisibleConversations(container: ParentNode, conversations: Map<string, ConversationItem>): void {
   const links = findConversationLinks(container);
 
   for (const link of links) {
@@ -84,16 +84,16 @@ function collectVisibleConversations(container: Element, conversations: Map<stri
   }
 }
 
-function findConversationLinks(container: Element): HTMLAnchorElement[] {
+function findConversationLinks(container: ParentNode): HTMLAnchorElement[] {
   const selector = CHATGPT_SELECTORS.sidebarConversationLinks.join(',');
   return Array.from(container.querySelectorAll<HTMLAnchorElement>(selector)).filter((link) => {
     const href = link.getAttribute('href');
-    return Boolean(href && parseConversationUrl(href));
+    return Boolean(href && parseChatGptConversationUrl(href));
   });
 }
 
 function conversationItemFromLink(link: HTMLAnchorElement): ConversationItem | null {
-  const parsed = parseConversationUrl(link.getAttribute('href') || link.href);
+  const parsed = parseChatGptConversationUrl(link.getAttribute('href') || link.href);
 
   if (!parsed) {
     return null;
@@ -106,7 +106,7 @@ function conversationItemFromLink(link: HTMLAnchorElement): ConversationItem | n
   };
 }
 
-function parseConversationUrl(href: string): { id: string; url: string } | null {
+export function parseChatGptConversationUrl(href: string): { id: string; url: string } | null {
   try {
     const url = new URL(href, window.location.origin);
 
@@ -122,15 +122,36 @@ function parseConversationUrl(href: string): { id: string; url: string } | null 
 
     return {
       id: decodeURIComponent(match[1]),
-      url: `${url.origin}/c/${match[1]}`
+      url: `${url.origin}${url.pathname}`
     };
   } catch {
     return null;
   }
 }
 
+export function getSidebarTitleForConversationUrl(href: string): string | null {
+  const currentConversation = parseChatGptConversationUrl(href);
+
+  if (!currentConversation) {
+    return null;
+  }
+
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href*="/c/"]')) {
+    const linkedConversation = parseChatGptConversationUrl(link.getAttribute('href') || link.href);
+
+    if (linkedConversation?.id === currentConversation.id) {
+      const title = getLinkTitle(link);
+      return title === UNTITLED_CONVERSATION ? null : title;
+    }
+  }
+
+  return null;
+}
+
 function getLinkTitle(link: HTMLAnchorElement): string {
-  const text = (link.innerText || link.textContent || '')
+  const titleRoot = link.cloneNode(true) as HTMLElement;
+  titleRoot.querySelectorAll('button, [role="button"], svg, [aria-hidden="true"]').forEach((element) => element.remove());
+  const text = (titleRoot.innerText || titleRoot.textContent || link.getAttribute('title') || link.getAttribute('aria-label') || '')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -150,7 +171,7 @@ function findSidebarScrollContainer(): HTMLElement | null {
   }
 
   for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href*="/c/"]')) {
-    if (!parseConversationUrl(link.getAttribute('href') || link.href)) {
+    if (!parseChatGptConversationUrl(link.getAttribute('href') || link.href)) {
       continue;
     }
 

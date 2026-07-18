@@ -12,7 +12,13 @@ describe('filename handling', () => {
 
   it('builds stable platform filenames with the selected extension', () => {
     expect(buildConversationFilename(2, '测试对话', new Date(2026, 0, 2, 3, 4, 5))).toBe(
-      'chatgpt-0002-测试对话-20260102-030405.md'
+      '测试对话.md'
+    );
+  });
+
+  it('keeps conversation filenames compact', () => {
+    expect(buildConversationFilename(1, '这是一个非常长的对话标题'.repeat(8))).toBe(
+      `${'这是一个非常长的对话标题'.repeat(8).slice(0, 48)}.md`
     );
   });
 });

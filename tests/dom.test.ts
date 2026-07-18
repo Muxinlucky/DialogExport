@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { domToMarkdown } from '../src/content/dom-to-markdown';
 import { dedupeCandidateElements, dedupeMessages } from '../src/platforms/common/dom-utils';
+import { getSidebarTitleForConversationUrl, parseChatGptConversationUrl } from '../src/content/chatgpt-sidebar';
 
 describe('DOM conversion', () => {
   it('handles backticks, links, lists and tables', () => {
@@ -25,5 +26,23 @@ describe('DOM conversion', () => {
       { role: 'user', content: 'same' },
       { role: 'user', content: 'same' }
     ])).toHaveLength(2);
+  });
+});
+
+describe('ChatGPT project conversations', () => {
+  it('keeps project conversation paths while extracting their conversation id', () => {
+    expect(parseChatGptConversationUrl('https://chatgpt.com/g/g-p-project/c/conversation-1')).toEqual({
+      id: 'conversation-1',
+      url: 'https://chatgpt.com/g/g-p-project/c/conversation-1'
+    });
+  });
+
+  it('uses the current renamed title from a project link', () => {
+    document.body.innerHTML = `
+      <nav>
+        <a href="https://chatgpt.com/g/g-p-project/c/conversation-1"><span>一战</span><button>更多</button></a>
+      </nav>`;
+
+    expect(getSidebarTitleForConversationUrl('https://chatgpt.com/g/g-p-project/c/conversation-1')).toBe('一战');
   });
 });

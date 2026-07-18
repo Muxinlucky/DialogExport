@@ -296,7 +296,9 @@ async function runSelectedConversationExport(runId: number, tabId: number, conve
         await sleep(randomRenderWaitMs());
 
         const conversation = await extractConversationWithRetry(activeWorkerTabId);
-        const title = conversation.title || item.title || 'untitled-conversation';
+        // The sidebar item reflects user renames immediately. ChatGPT's page title can
+        // retain the automatically generated first title, especially for project chats.
+        const title = item.title || conversation.title || 'untitled-conversation';
         const exportedConversation: ExportedConversation = {
           ...conversation,
           title,

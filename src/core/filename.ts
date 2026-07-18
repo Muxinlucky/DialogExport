@@ -1,4 +1,4 @@
-import { MAX_FILENAME_LENGTH } from './constants';
+import { MAX_CONVERSATION_FILENAME_TITLE_LENGTH, MAX_FILENAME_LENGTH } from './constants';
 
 const ILLEGAL_FILENAME_CHARS = /[<>:"/\\|?*\u0000-\u001f]/g;
 const RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
@@ -36,15 +36,13 @@ export function buildConversationFilename(index: number, title: string, date = n
 }
 
 export function buildPlatformConversationFilename(
-  platformPrefix: string,
-  index: number,
+  _platformPrefix: string,
+  _index: number,
   title: string,
-  date = new Date(),
+  _date = new Date(),
   extension = 'md'
 ): string {
-  const safePrefix = sanitizeFilenamePart(platformPrefix, 'ai').toLowerCase().replace(/\s+/g, '-');
-  const safeTitle = sanitizeFilenamePart(title);
-  const safeIndex = String(index).padStart(4, '0');
+  const safeTitle = sanitizeFilenamePart(title).slice(0, MAX_CONVERSATION_FILENAME_TITLE_LENGTH).trim();
   const safeExtension = sanitizeFilenamePart(extension, 'md').toLowerCase().replace(/^\.+/, '') || 'md';
-  return `${safePrefix}-${safeIndex}-${safeTitle}-${formatTimestampForFilename(date)}.${safeExtension}`;
+  return `${safeTitle}.${safeExtension}`;
 }
